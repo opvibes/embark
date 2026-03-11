@@ -7,7 +7,8 @@
     "cloudflareUse": true
   },
   "name": "embark",
-  "title": "Embark",
-  "subdomain": "embark",
-  "description": "Embark your vibe(or not) code applications with a fast deploy project"
+  "title": "Embark vibe codes applications",
+  "description": "Embark your vibe codes applications with a fast deploy and configurations",
+  "rootDomain": false,
+  "subdomain": "embark"
 }

@@ -342,7 +342,7 @@ When changes are pushed to `main` **outside of `packages/`** (scripts, workflows
 <!-- PACKAGES:START -->
 | Package | Description |
 |---------|-------------|
-| `embark` | Embark your vibe(or not) code applications with a fast deploy project |
+| `embark` | Embark your vibe codes applications with a fast deploy and configurations |
 <!-- PACKAGES:END -->
 
 ### Embark Website
