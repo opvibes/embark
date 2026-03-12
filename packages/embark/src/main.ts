@@ -16,6 +16,7 @@ import { initGetStarted } from "./getStarted";
 import { initCursor } from "./cursor";
 import { initScrollProgress } from "./scrollProgress";
 import { initCarousel } from "./carousel";
+import { initVersionBadge } from "./version";
 
 initI18n();
 initNav();
@@ -34,3 +35,4 @@ initArchitecture();
 initStackCards();
 initControlCards();
 initGetStarted();
+initVersionBadge();
