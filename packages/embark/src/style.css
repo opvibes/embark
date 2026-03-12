@@ -28,6 +28,25 @@
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.25) rgba(10, 10, 15, 0.8);
+}
+
+html::-webkit-scrollbar {
+  width: 5px;
+}
+
+html::-webkit-scrollbar-track {
+  background: rgba(10, 10, 15, 0.9);
+}
+
+html::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.2);
+  border-radius: 999px;
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.45);
 }
 
 body {
@@ -204,23 +223,24 @@ code {
 .version-badge {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 0.2rem 0.55rem;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
   border-radius: 999px;
-  background: rgba(34, 211, 238, 0.07);
-  border: 1px solid rgba(34, 211, 238, 0.2);
-  color: rgba(34, 211, 238, 0.7);
+  background: rgba(34, 211, 238, 0.06);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  color: rgba(34, 211, 238, 0.6);
   text-decoration: none;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   white-space: nowrap;
+  line-height: 1.6;
 }
 
 .version-badge:hover {
-  background: rgba(34, 211, 238, 0.14);
-  border-color: rgba(34, 211, 238, 0.45);
-  color: var(--cyan);
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.4);
+  color: var(--neon-cyan);
 }
 
 .version-badge:empty {
