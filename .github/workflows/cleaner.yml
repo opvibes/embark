@@ -39,7 +39,11 @@ jobs:
             ORPHANS="[]"
           fi
 
-          echo "data=$ORPHANS" >> $GITHUB_OUTPUT
+          # Use multiline delimiter for GITHUB_OUTPUT (JSON can span multiple lines)
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "data<<$EOF" >> $GITHUB_OUTPUT
+          echo "$ORPHANS" >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
 
           COUNT=$(echo "$ORPHANS" | jq 'length')
           echo "count=$COUNT" >> $GITHUB_OUTPUT
@@ -155,8 +159,11 @@ jobs:
 
       - name: Remove orphan entries from apps.jsonc
         if: steps.orphans.outputs.count != '0'
+        env:
+          ORPHAN_DATA: ${{ steps.orphans.outputs.data }}
         run: |
-          bun scripts/cleanup-cloudflare-apps.ts remove-entries --data='${{ steps.orphans.outputs.data }}'
+          COMPACT=$(echo "$ORPHAN_DATA" | jq -c '.')
+          bun scripts/cleanup-cloudflare-apps.ts remove-entries "--data=$COMPACT"
 
       - name: Commit cleanup changes
         run: |
