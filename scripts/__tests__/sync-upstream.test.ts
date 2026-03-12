@@ -16,6 +16,11 @@ const TEST_DIR = join(import.meta.dirname, "../..", ".test-sync-upstream");
 
 async function setupTest() {
   await mkdir(TEST_DIR, { recursive: true });
+  // Initialize a git repo so git doesn't traverse up to the parent repo
+  // (which in forks may have an 'upstream' remote, breaking isolation)
+  execSync("git init", { cwd: TEST_DIR, stdio: "ignore" });
+  execSync("git config user.email test@test.com", { cwd: TEST_DIR, stdio: "ignore" });
+  execSync("git config user.name Test", { cwd: TEST_DIR, stdio: "ignore" });
 }
 
 async function teardownTest() {

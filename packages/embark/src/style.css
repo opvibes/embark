@@ -460,13 +460,13 @@ code {
 .nav-submenu {
   display: none;
   position: absolute;
-  top: calc(100% + 0.5rem);
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(10, 10, 15, 0.98);
   border: 1px solid rgba(34, 211, 238, 0.15);
   border-radius: 12px;
-  padding: 0.5rem 0;
+  padding: 0.75rem 0 0.5rem;
   min-width: 180px;
   list-style: none;
   margin: 0;
@@ -475,7 +475,7 @@ code {
   z-index: 10001;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-50%) translateY(-6px);
+  transform: translateX(-50%) translateY(-4px);
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
