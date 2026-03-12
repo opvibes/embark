@@ -13,9 +13,8 @@ env:
   DOMAIN: ${{ secrets.DOMAIN }}
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4__SUBMODULES_WITH__
@@ -25,16 +24,37 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install Netlify CLI
-        run: bun add -g netlify-cli
-
       - name: Install dependencies
         run: bun install
 
       - name: Build project
         run: bun run --cwd $PACKAGE_PATH build
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-__PACKAGE_NAME__
+          path: packages/__PACKAGE_NAME__/dist
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      site_id: ${{ steps.provision.outputs.site_id }}
+      site_url: ${{ steps.provision.outputs.site_url }}
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-__PACKAGE_NAME__
+          path: packages/__PACKAGE_NAME__/dist
+
+      - name: Install Netlify CLI
+        run: bun add -g netlify-cli
+
       - name: Get or Create Netlify site
+        id: provision
         run: |
           SITE_NAME="${SUBDOMAIN}-embark"
 
@@ -64,14 +84,73 @@ jobs:
             echo "✓ Site created: $SITE_ID"
           fi
 
-          echo "SITE_ID=$SITE_ID" >> $GITHUB_ENV
-          echo "SITE_URL=$SITE_URL" >> $GITHUB_ENV
+          echo "site_id=$SITE_ID" >> $GITHUB_OUTPUT
+          echo "site_url=$SITE_URL" >> $GITHUB_OUTPUT
 
       - name: Deploy to Netlify
         run: |
           netlify deploy \
             --dir=$PACKAGE_PATH/dist \
-            --site $SITE_ID \
+            --site ${{ steps.provision.outputs.site_id }} \
             --auth ${{ secrets.NETLIFY_TOKEN }} \
             --prod \
             --no-build
+
+  dns:
+    if: __CLOUDFLARE_IF__
+    needs: deploy
+    runs-on: ubuntu-latest
+    env:
+      SITE_ID: ${{ needs.deploy.outputs.site_id }}
+      SITE_URL: ${{ needs.deploy.outputs.site_url }}
+    steps:
+      - name: Get or Create subdomain on Cloudflare
+        run: |
+          HOSTNAME=$(echo $SITE_URL | sed -E 's|https?://||')
+
+          EXISTING=$(curl -s "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/dns_records?name=${SUBDOMAIN}.${DOMAIN}" \
+            -H "Authorization: Bearer ${{ secrets.CF_TOKEN }}")
+
+          RECORD_ID=$(echo "$EXISTING" | jq -r '.result[0].id // empty')
+
+          if [ -n "$RECORD_ID" ] && [ "$RECORD_ID" != "null" ]; then
+            echo "✓ DNS record already exists"
+          else
+            echo "Creating DNS record..."
+
+            RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/dns_records" \
+              -H "Authorization: Bearer ${{ secrets.CF_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              --data "{
+                \"type\": \"CNAME\",
+                \"name\": \"${SUBDOMAIN}\",
+                \"content\": \"${HOSTNAME}\",
+                \"ttl\": 120,
+                \"proxied\": true
+              }")
+
+            echo "$RESPONSE"
+          fi
+
+      - name: Register domain in Netlify
+        run: |
+          CUSTOM_DOMAIN="${SUBDOMAIN}.${DOMAIN}"
+
+          EXISTING=$(curl -s "https://api.netlify.com/api/v1/sites/$SITE_ID" \
+            -H "Authorization: Bearer ${{ secrets.NETLIFY_TOKEN }}")
+
+          CURRENT_DOMAIN=$(echo "$EXISTING" | jq -r '.custom_domain // empty')
+
+          if [ "$CURRENT_DOMAIN" = "$CUSTOM_DOMAIN" ]; then
+            echo "✓ Custom domain already set: $CUSTOM_DOMAIN"
+          else
+            echo "Setting custom domain $CUSTOM_DOMAIN..."
+
+            RESPONSE=$(curl -s -X PATCH "https://api.netlify.com/api/v1/sites/$SITE_ID" \
+              -H "Authorization: Bearer ${{ secrets.NETLIFY_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"custom_domain\": \"$CUSTOM_DOMAIN\"}")
+
+            echo "$RESPONSE" | jq -r '.custom_domain // .errors'
+            echo "✓ Custom domain set"
+          fi

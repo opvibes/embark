@@ -176,7 +176,7 @@ describe("processPackageWorkflow - I/O integration", () => {
       const content = readFileSync(join(testDir, "my-site.yml"), "utf-8");
       expect(content).toContain("name: Deploy my-site");
       expect(content).toContain("Install Netlify CLI");
-      expect(content).not.toContain("Cloudflare");
+      expect(content).toContain("if: false"); // dns job disabled when cloudflareUse=false
     } finally {
       Bun.spawnSync(["rm", "-rf", testDir]);
     }
@@ -191,8 +191,10 @@ describe("processPackageWorkflow - I/O integration", () => {
       expect(result).toBe(true);
 
       const content = readFileSync(join(testDir, "my-site.yml"), "utf-8");
+      expect(content).toContain("if: true"); // dns job enabled when cloudflareUse=true
       expect(content).toContain("Get or Create subdomain on Cloudflare");
       expect(content).toContain("Register domain in Netlify");
+      expect(content).toContain("needs: deploy"); // dns job depends on deploy
     } finally {
       Bun.spawnSync(["rm", "-rf", testDir]);
     }
@@ -207,8 +209,10 @@ describe("processPackageWorkflow - I/O integration", () => {
       expect(result).toBe(true);
 
       const content = readFileSync(join(testDir, "my-app.yml"), "utf-8");
+      expect(content).toContain("if: true"); // dns job enabled when cloudflareUse=true
       expect(content).toContain("Get or Create subdomain on Cloudflare");
       expect(content).not.toContain("Register domain in Netlify");
+      expect(content).toContain("needs: deploy"); // dns job depends on deploy
     } finally {
       Bun.spawnSync(["rm", "-rf", testDir]);
     }
@@ -282,6 +286,74 @@ describe("processPackageWorkflow - I/O integration", () => {
 
       const content = readFileSync(join(testDir, "my-app.yml"), "utf-8");
       expect(content).toContain("submodules: recursive");
+    } finally {
+      Bun.spawnSync(["rm", "-rf", testDir]);
+    }
+  });
+
+  test("gcp workflow has multi-job structure with outputs", async () => {
+    const testDir = join(tmpdir(), `test-workflow-multijob-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+
+    try {
+      await processPackageWorkflow("my-svc", "gcp", false, testDir);
+      const content = readFileSync(join(testDir, "my-svc.yml"), "utf-8");
+
+      // Build job uploads artifact
+      expect(content).toContain("actions/upload-artifact@v4");
+      expect(content).toContain("name: build-my-svc");
+
+      // Docker job downloads artifact and outputs image_url
+      expect(content).toContain("actions/download-artifact@v4");
+      expect(content).toContain("image_url: ${{ steps.push.outputs.image_url }}");
+
+      // Deploy job uses docker output and outputs service_url
+      expect(content).toContain("needs.docker.outputs.image_url");
+      expect(content).toContain("service_url: ${{ steps.run.outputs.service_url }}");
+
+      // DNS job uses deploy output
+      expect(content).toContain("needs.deploy.outputs.service_url");
+    } finally {
+      Bun.spawnSync(["rm", "-rf", testDir]);
+    }
+  });
+
+  test("netlify workflow has multi-job structure with outputs", async () => {
+    const testDir = join(tmpdir(), `test-workflow-netlify-multijob-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+
+    try {
+      await processPackageWorkflow("my-site", "netlify", true, testDir);
+      const content = readFileSync(join(testDir, "my-site.yml"), "utf-8");
+
+      // Deploy job outputs site_id and site_url
+      expect(content).toContain("site_id: ${{ steps.provision.outputs.site_id }}");
+      expect(content).toContain("site_url: ${{ steps.provision.outputs.site_url }}");
+
+      // DNS job receives them via needs.deploy.outputs
+      expect(content).toContain("needs.deploy.outputs.site_id");
+      expect(content).toContain("needs.deploy.outputs.site_url");
+    } finally {
+      Bun.spawnSync(["rm", "-rf", testDir]);
+    }
+  });
+
+  test("cloudflare-pages workflow has multi-job structure with project_name output", async () => {
+    const testDir = join(tmpdir(), `test-workflow-cfpages-multijob-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+
+    try {
+      await processPackageWorkflow("my-pages", "cloudflare-pages", true, testDir);
+      const content = readFileSync(join(testDir, "my-pages.yml"), "utf-8");
+
+      // Provision job outputs project_name
+      expect(content).toContain("project_name: ${{ steps.project.outputs.project_name }}");
+
+      // Deploy job uses provision output
+      expect(content).toContain("needs.provision.outputs.project_name");
+
+      // DNS job also uses provision output
+      expect(content).toContain("needs: provision");
     } finally {
       Bun.spawnSync(["rm", "-rf", testDir]);
     }

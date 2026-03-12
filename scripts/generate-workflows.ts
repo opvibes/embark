@@ -14,6 +14,7 @@ const PLACEHOLDER_SUBDOMAIN = "__SUBDOMAIN__";
 const PLACEHOLDER_ROOT_DOMAIN = "__ROOT_DOMAIN__";
 const PLACEHOLDER_DOMAIN_SETUP = "__DOMAIN_SETUP__";
 const PLACEHOLDER_SUBMODULES_WITH = "__SUBMODULES_WITH__";
+const PLACEHOLDER_CLOUDFLARE_IF = "__CLOUDFLARE_IF__";
 
 export async function exists(path: string): Promise<boolean> {
   try {
@@ -48,31 +49,20 @@ export async function buildWorkflowContent(
 
   const baseTemplate = await readFile(join(TEMPLATES_DIR, templateFile), "utf-8");
 
-  let content = baseTemplate;
-
-  // Cloudflare steps only apply to netlify and gcp deployments (cloudflare-pages already includes DNS setup)
-  if (cloudflareUse && (appDeployment === "netlify" || appDeployment === "gcp")) {
-    const cfStepsFile =
-      appDeployment === "netlify"
-        ? "cloudflare.netlify.steps.yml"
-        : "cloudflare.gcp.steps.yml";
-    const cfSteps = await readFile(join(TEMPLATES_DIR, cfStepsFile), "utf-8");
-    content = content.trimEnd() + "\n" + cfSteps;
-  }
-
   const subdomainValue = subdomain ?? packageName.toLowerCase();
 
   const submodulesWithValue = useSubmodule === true
     ? "\n        with:\n          submodules: recursive"
     : "";
 
-  return content
+  return baseTemplate
     .replaceAll(PLACEHOLDER, packageName)
     .replaceAll(PLACEHOLDER_LOWERCASE, packageName.toLowerCase())
     .replaceAll(PLACEHOLDER_SUBDOMAIN, subdomainValue)
     .replaceAll(PLACEHOLDER_ROOT_DOMAIN, rootDomain === true ? "true" : "false")
     .replaceAll(PLACEHOLDER_DOMAIN_SETUP, cloudflareUse === true ? "true" : "false")
-    .replaceAll(PLACEHOLDER_SUBMODULES_WITH, submodulesWithValue);
+    .replaceAll(PLACEHOLDER_SUBMODULES_WITH, submodulesWithValue)
+    .replaceAll(PLACEHOLDER_CLOUDFLARE_IF, cloudflareUse === true ? "true" : "false");
 }
 
 export async function processPackageWorkflow(

@@ -13,9 +13,8 @@ env:
   DOMAIN: ${{ secrets.DOMAIN }}
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4__SUBMODULES_WITH__
@@ -30,3 +29,20 @@ jobs:
 
       - name: Build project
         run: bun run --cwd $PACKAGE_PATH build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-__PACKAGE_NAME__
+          path: packages/__PACKAGE_NAME__/dist
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-__PACKAGE_NAME__
+          path: packages/__PACKAGE_NAME__/dist

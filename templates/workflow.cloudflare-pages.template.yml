@@ -7,10 +7,16 @@ on:
       - "packages/__PACKAGE_NAME__/**"
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+env:
+  SUBDOMAIN: __SUBDOMAIN__
+  ROOT_DOMAIN: __ROOT_DOMAIN__
+  DOMAIN_SETUP: __DOMAIN_SETUP__
+  DOMAIN: ${{ secrets.DOMAIN }}
+  PACKAGE_NAME: __PACKAGE_NAME__
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4__SUBMODULES_WITH__
@@ -26,34 +32,37 @@ jobs:
       - name: Build
         run: bun run --cwd packages/__PACKAGE_NAME__ build
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-__PACKAGE_NAME__
+          path: packages/__PACKAGE_NAME__/dist
+          retention-days: 1
+
+  provision:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      project_name: ${{ steps.project.outputs.project_name }}
+    steps:
       - name: Create Cloudflare Pages project
         id: project
         env:
           CF_TOKEN: ${{ secrets.CF_TOKEN_PAGES }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          SUBDOMAIN: __SUBDOMAIN__
-          ROOT_DOMAIN: __ROOT_DOMAIN__
-          DOMAIN_SETUP: __DOMAIN_SETUP__
-          DOMAIN: ${{ secrets.DOMAIN }}
-          PACKAGE_NAME: __PACKAGE_NAME__
         run: |
           if [ "$DOMAIN_SETUP" = "true" ]; then
-            # Extract prefix from DOMAIN (e.g., openvibes.tech -> blpsoares)
             DOMAIN_PREFIX="${DOMAIN%%.*}"
-            # Project name: root domain uses just domain prefix; subdomain uses {domain-prefix}-{subdomain}
             if [ "$ROOT_DOMAIN" = "true" ]; then
               PROJECT_NAME="${DOMAIN_PREFIX}"
             else
-              # Replace dots with hyphens — Cloudflare Pages project names cannot contain dots
               PROJECT_NAME=$(echo "${DOMAIN_PREFIX}-${SUBDOMAIN}" | tr '.' '-')
             fi
           else
-            # No custom domain — use package name as project identifier
             PROJECT_NAME="${PACKAGE_NAME}"
           fi
           echo "project_name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
 
-          # Check if project exists
           RESPONSE=$(curl -s -X GET \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}" \
             -H "Authorization: Bearer ${CF_TOKEN}" \
@@ -83,26 +92,37 @@ jobs:
             fi
           fi
 
+  deploy:
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-__PACKAGE_NAME__
+          path: packages/__PACKAGE_NAME__/dist
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_TOKEN_PAGES }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=${{ steps.project.outputs.project_name }} --commit-dirty=true
+          command: pages deploy dist --project-name=${{ needs.provision.outputs.project_name }} --commit-dirty=true
           workingDirectory: packages/__PACKAGE_NAME__
 
+  dns:
+    if: __DOMAIN_SETUP__
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: ${{ needs.provision.outputs.project_name }}
+    steps:
       - name: Add Custom Domain to Cloudflare Pages
-        if: __DOMAIN_SETUP__
         env:
           CF_TOKEN: ${{ secrets.CF_TOKEN_PAGES }}
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
-          PROJECT_NAME: ${{ steps.project.outputs.project_name }}
-          SUBDOMAIN: __SUBDOMAIN__
-          ROOT_DOMAIN: __ROOT_DOMAIN__
-          DOMAIN: ${{ secrets.DOMAIN }}
         run: |
-          # For root domain, use DOMAIN directly; for subdomain, use SUBDOMAIN.DOMAIN
           if [ "$ROOT_DOMAIN" = "true" ]; then
             FULL_DOMAIN="${DOMAIN}"
             CNAME_NAME="@"
@@ -111,7 +131,6 @@ jobs:
             CNAME_NAME="${SUBDOMAIN}"
           fi
 
-          # First, delete any existing conflicting DNS record
           echo "Checking for existing DNS records..."
           EXISTING_RECORDS=$(curl -s -X GET \
             "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=${FULL_DOMAIN}" \
@@ -129,7 +148,6 @@ jobs:
             sleep 2
           fi
 
-          # Create CNAME record FIRST (before adding custom domain)
           echo "Creating CNAME record: ${FULL_DOMAIN} -> ${PROJECT_NAME}.pages.dev"
           CNAME_RESPONSE=$(curl -s -X POST \
             "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
@@ -142,14 +160,11 @@ jobs:
             echo "✓ CNAME created: ${FULL_DOMAIN} -> ${PROJECT_NAME}.pages.dev"
           else
             CNAME_ERROR=$(echo "$CNAME_RESPONSE" | jq -r '.errors[0].message // "Unknown"')
-            # Record might already exist with correct target
             echo "⚠️ CNAME setup: $CNAME_ERROR (may already exist)"
           fi
 
-          # Wait for DNS propagation
           sleep 3
 
-          # Now add custom domain to Pages project (will auto-verify since CNAME exists)
           echo "Adding custom domain to Pages project..."
           RESPONSE=$(curl -s -X POST \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${PROJECT_NAME}/domains" \
