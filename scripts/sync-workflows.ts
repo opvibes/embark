@@ -297,7 +297,8 @@ async function getExpectedContentForPackage(
   const cloudflareUse = config?.deploy?.cloudflareUse ?? false;
   const subdomain = config?.subdomain;
   const rootDomain = config?.rootDomain;
-  return buildWorkflowContent(packageName, appDeployment, cloudflareUse, subdomain, rootDomain);
+  const useSubmodule = config?.useSubmodule;
+  return buildWorkflowContent(packageName, appDeployment, cloudflareUse, subdomain, rootDomain, useSubmodule);
 }
 
 export type ApproveCallback = (workflow: string, current: string, expected: string) => Promise<boolean>;
