@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/opvibes/embark/compare/v1.1.0...v1.2.0) (2026-03-12)
+
+
+### Features
+
+* **fork:** suporte a uso como fork com sync de upstream ([d73ccb2](https://github.com/opvibes/embark/commit/d73ccb2eaa3b046f458410bfc5272b0bca85fdaf))
+* **site:** nav completa com dropdowns, footer rico e fixes ([17c078b](https://github.com/opvibes/embark/commit/17c078b77aa0ec074eec2306991f56f9cc2c403a))
+* **utils:** unificar scripts em uma CLI interativa ([2c38703](https://github.com/opvibes/embark/commit/2c38703299033fd5ec80b9a472f62b8abeefd1c4))
+
+
+### Bug Fixes
+
+* dropdown sem gap e teste sync-upstream isolado ([d954598](https://github.com/opvibes/embark/commit/d954598cf036062f0a020399a4716983add1619e))
+* **sync-workflows:** passar useSubmodule ao gerar conteúdo esperado ([7347413](https://github.com/opvibes/embark/commit/734741318736a56ae4718d552f9c60c8c9c756e6))
+
 ## [1.1.0](https://github.com/opvibes/embark/compare/v1.0.1...v1.1.0) (2026-03-12)
 
 
