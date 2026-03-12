@@ -11,6 +11,11 @@ import {
   displayDiff,
   getSubdomainForPackage,
   selectOption,
+  extractCustomBlocks,
+  stripCustomBlocks,
+  mergeCustomBlocksIntoTemplate,
+  CUSTOM_BLOCK_START,
+  CUSTOM_BLOCK_END,
 } from "../sync-workflows";
 
 const TEST_DIR = join(import.meta.dirname, "../..", ".test-sync");
@@ -443,6 +448,116 @@ describe("sync-workflows", () => {
 
       expect(result.updated).toBe(0);
       expect(result.skipped).toBe(0);
+    });
+  });
+
+  describe("extractCustomBlocks", () => {
+    it("returns empty array when no custom blocks", () => {
+      const content = "name: Deploy\nsteps: []";
+      expect(extractCustomBlocks(content)).toEqual([]);
+    });
+
+    it("extracts a single custom block with preceding line", () => {
+      const content = `name: Deploy myapp\n${CUSTOM_BLOCK_START}\n- custom step\n${CUSTOM_BLOCK_END}\non: push`;
+      const blocks = extractCustomBlocks(content);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]!.content).toContain("custom step");
+      expect(blocks[0]!.precedingLine).toBe("name: Deploy myapp");
+    });
+
+    it("extracts multiple custom blocks", () => {
+      const content = `line1\n${CUSTOM_BLOCK_START}\nblock1\n${CUSTOM_BLOCK_END}\nline2\n${CUSTOM_BLOCK_START}\nblock2\n${CUSTOM_BLOCK_END}`;
+      const blocks = extractCustomBlocks(content);
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]!.content).toContain("block1");
+      expect(blocks[1]!.content).toContain("block2");
+    });
+  });
+
+  describe("stripCustomBlocks", () => {
+    it("returns content unchanged when no custom blocks", () => {
+      const content = "name: Deploy\nsteps: []";
+      expect(stripCustomBlocks(content)).toBe(content);
+    });
+
+    it("removes custom block markers and content", () => {
+      const content = `before\n${CUSTOM_BLOCK_START}\nremoved\n${CUSTOM_BLOCK_END}\nafter`;
+      const result = stripCustomBlocks(content);
+      expect(result).not.toContain(CUSTOM_BLOCK_START);
+      expect(result).not.toContain("removed");
+      expect(result).toContain("before");
+      expect(result).toContain("after");
+    });
+  });
+
+  describe("mergeCustomBlocksIntoTemplate", () => {
+    it("returns template unchanged when no custom blocks", () => {
+      const template = "name: Deploy\nsteps: []";
+      expect(mergeCustomBlocksIntoTemplate(template, [])).toBe(template);
+    });
+
+    it("re-inserts custom block after preceding line", () => {
+      const template = "line1\nline2\nline3";
+      const blocks = [{ content: `${CUSTOM_BLOCK_START}\ncustom\n${CUSTOM_BLOCK_END}`, precedingLine: "line1" }];
+      const result = mergeCustomBlocksIntoTemplate(template, blocks);
+      const lines = result.split("\n");
+      const idx = lines.indexOf("line1");
+      expect(lines[idx + 1]).toBe(CUSTOM_BLOCK_START);
+    });
+
+    it("appends custom block at end when preceding line not found", () => {
+      const template = "line1\nline2";
+      const blocks = [{ content: `${CUSTOM_BLOCK_START}\ncustom\n${CUSTOM_BLOCK_END}`, precedingLine: "nonexistent" }];
+      const result = mergeCustomBlocksIntoTemplate(template, blocks);
+      expect(result).toContain("custom");
+      expect(result.indexOf("custom")).toBeGreaterThan(result.indexOf("line2"));
+    });
+  });
+
+  describe("syncWorkflows with EMBARK:CUSTOM blocks", () => {
+    beforeEach(setupTest);
+    afterEach(teardownTest);
+
+    it("does not trigger sync when only custom blocks differ from template", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      const templateContent = await buildWorkflowContent("my-app", "netlify", false);
+      // Add a custom block to the template content (simulates user customization)
+      const withCustom = templateContent + `\n${CUSTOM_BLOCK_START}\n# my custom thing\n${CUSTOM_BLOCK_END}\n`;
+
+      await writeFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), withCustom);
+
+      const result = await syncWorkflows(
+        TEST_WORKFLOWS_DIR,
+        TEST_TEMPLATE,
+        true,
+        join(TEST_DIR, "packages"),
+      );
+
+      expect(result.updated).toBe(0);
+      expect(result.skipped).toBe(0);
+    });
+
+    it("preserves custom blocks when template changes", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      const templateContent = await buildWorkflowContent("my-app", "netlify", false);
+      const customBlock = `${CUSTOM_BLOCK_START}\n# preserved content\n${CUSTOM_BLOCK_END}`;
+      // Simulate: current file has old template + custom block (doesn't match new template)
+      const currentWithCustom = "name: old-template-content\n" + customBlock;
+
+      await writeFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), currentWithCustom);
+
+      const result = await syncWorkflows(
+        TEST_WORKFLOWS_DIR,
+        TEST_TEMPLATE,
+        true,
+        join(TEST_DIR, "packages"),
+      );
+
+      expect(result.updated).toBe(1);
+
+      const writtenContent = await readFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), "utf-8");
+      expect(writtenContent).toContain("preserved content");
+      expect(writtenContent).toContain(CUSTOM_BLOCK_START);
     });
   });
 });

@@ -844,6 +844,8 @@ bun install</code></pre>
             <button class="copy-btn" aria-label="Copy to clipboard">📋</button>
             <pre><code>bun run init
 # 🗑️ Removes demo package
+# 🔗 Configures upstream remote
+# 🛡️ Enables merge protection
 # ❓ Remove .git? (optional)
 # ✅ Ready for your code!</code></pre>
           </div>
@@ -862,6 +864,24 @@ bun install</code></pre>
 # 📝 Project name: my-app
 # 📄 Description: My awesome app
 # ✅ Package created!</code></pre>
+          </div>
+        </div>
+        <div class="get-started-card reverse">
+          <div class="get-started-content">
+            <div class="get-started-header">
+              <span class="get-started-number" style="background:linear-gradient(135deg,#818cf8,#a5b4fc)">↑</span>
+              <h3 data-i18n="start.stepSync.title">Sync upstream updates</h3>
+            </div>
+            <p class="get-started-desc" data-i18n="start.stepSync.desc">When embark releases improvements, pull them into your fork without losing your customizations. Demo files are removed automatically.</p>
+          </div>
+          <div class="code-block">
+            <button class="copy-btn" aria-label="Copy to clipboard">📋</button>
+            <pre><code>bun run sync-upstream
+# 📡 Fetching upstream...
+# 🔀 Merging upstream/main...
+# 🗑️  Removed: packages/embark
+# 🔧 Normalizing config files...
+# ✅ Upstream sync complete!</code></pre>
           </div>
         </div>
         <div class="get-started-card reverse">

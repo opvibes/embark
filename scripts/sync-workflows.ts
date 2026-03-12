@@ -5,6 +5,86 @@ import * as readline from "node:readline";
 import { readEmbarkConfig } from "./embark-config";
 import { buildWorkflowContent } from "./generate-workflows";
 
+export const CUSTOM_BLOCK_START = "# EMBARK:CUSTOM";
+export const CUSTOM_BLOCK_END = "# END EMBARK:CUSTOM";
+
+export interface CustomBlock {
+  content: string;
+  precedingLine: string;
+}
+
+export function extractCustomBlocks(content: string): CustomBlock[] {
+  const lines = content.split("\n");
+  const blocks: CustomBlock[] = [];
+  let inBlock = false;
+  let blockLines: string[] = [];
+  let precedingLine = "";
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === CUSTOM_BLOCK_START || trimmed.startsWith(CUSTOM_BLOCK_START + " ")) {
+      inBlock = true;
+      blockLines = [line];
+    } else if (inBlock) {
+      blockLines.push(line);
+      if (trimmed === CUSTOM_BLOCK_END) {
+        blocks.push({ content: blockLines.join("\n"), precedingLine });
+        inBlock = false;
+        blockLines = [];
+      }
+    } else {
+      if (line.trim() !== "") {
+        precedingLine = line;
+      }
+    }
+  }
+
+  return blocks;
+}
+
+export function stripCustomBlocks(content: string): string {
+  const lines = content.split("\n");
+  const result: string[] = [];
+  let inBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === CUSTOM_BLOCK_START || trimmed.startsWith(CUSTOM_BLOCK_START + " ")) {
+      inBlock = true;
+    } else if (inBlock && trimmed === CUSTOM_BLOCK_END) {
+      inBlock = false;
+    } else if (!inBlock) {
+      result.push(line);
+    }
+  }
+
+  return result.join("\n");
+}
+
+export function mergeCustomBlocksIntoTemplate(templateContent: string, blocks: CustomBlock[]): string {
+  if (blocks.length === 0) return templateContent;
+
+  let result = templateContent;
+
+  for (const block of blocks) {
+    const lines = result.split("\n");
+    const idx = block.precedingLine ? lines.lastIndexOf(block.precedingLine) : -1;
+
+    if (idx >= 0) {
+      lines.splice(idx + 1, 0, block.content);
+      result = lines.join("\n");
+    } else {
+      result = result.trimEnd() + "\n\n" + block.content + "\n";
+    }
+  }
+
+  return result;
+}
+
+function normalizeForComparison(content: string): string {
+  return content.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
 const WORKFLOWS_DIR = join(ROOT, ".github", "workflows");
@@ -245,7 +325,8 @@ export async function syncWorkflows(
     const currentContent = await readFile(workflowPath, "utf-8");
     const expectedContent = await getExpectedContentForPackage(workflow, packagesDir);
 
-    if (wasCustomized(currentContent, expectedContent)) {
+    const stripped = stripCustomBlocks(currentContent);
+    if (normalizeForComparison(stripped) !== normalizeForComparison(expectedContent)) {
       customized.push(workflow);
     }
   }
@@ -289,15 +370,18 @@ export async function syncWorkflows(
     const currentContent = await readFile(workflowPath, "utf-8");
     const expectedContent = await getExpectedContentForPackage(workflow, packagesDir);
 
-    if (wasCustomized(currentContent, expectedContent)) {
+    const strippedCurrent = stripCustomBlocks(currentContent);
+    const customBlocks = extractCustomBlocks(currentContent);
+
+    if (normalizeForComparison(strippedCurrent) !== normalizeForComparison(expectedContent)) {
       let approve = mode === "all";
 
       if (mode === "one_by_one") {
         if (approveCallback) {
-          approve = await approveCallback(workflow, currentContent, expectedContent);
+          approve = await approveCallback(workflow, strippedCurrent, expectedContent);
         } else {
           console.log(`\n${colors.blue}📄 ${workflow}.yml${colors.reset}`);
-          displayDiff(currentContent, expectedContent);
+          displayDiff(strippedCurrent, expectedContent);
           const index = await selectOption(
             [`${colors.green}✓ Approve${colors.reset}`, `${colors.red}✗ Reject${colors.reset}`],
             `Overwrite ${colors.blue}${workflow}.yml${colors.reset}?`,
@@ -309,7 +393,8 @@ export async function syncWorkflows(
       }
 
       if (approve) {
-        await writeFile(workflowPath, expectedContent, "utf-8");
+        const mergedContent = mergeCustomBlocksIntoTemplate(expectedContent, customBlocks);
+        await writeFile(workflowPath, mergedContent, "utf-8");
         console.log(`${colors.green}✅ ${workflow}.yml updated${colors.reset}`);
         updated++;
       } else {

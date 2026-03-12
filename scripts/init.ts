@@ -1,4 +1,4 @@
-import { rm, access, readdir } from "node:fs/promises";
+import { rm, access, readdir, readFile, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join, basename } from "node:path";
 import * as readline from "node:readline";
@@ -179,6 +179,24 @@ async function init(): Promise<void> {
   write(`\n${COLOR.bold}🚀 Initialize repository for personal use${COLOR.reset}\n`);
   write(`${COLOR.dim}${SEP}${COLOR.reset}\n\n`);
 
+  // ── Step 0: strip embark-specific badges from README ────────
+  const readmePath = join(ROOT, "README.md");
+  if (await exists(readmePath)) {
+    const readmeContent = await readFile(readmePath, "utf-8");
+    // Remove the <p align="center"> block containing shields.io version badge
+    const badgeBlockRegex = /\n*<p\s+align="center">\s*\n(?:\s*<img[^>]*shields\.io[^>]*>\s*\n)+<\/p>\n*/g;
+    const cleaned = readmeContent.replace(badgeBlockRegex, "\n\n");
+    if (cleaned !== readmeContent) {
+      await writeFile(readmePath, cleaned, "utf-8");
+      write(`  ${COLOR.green}✓${COLOR.reset} Removed version badges from README.md\n`);
+      try {
+        execSync("git add README.md", { cwd: ROOT, stdio: "ignore" });
+      } catch {
+        // ignore git errors
+      }
+    }
+  }
+
   // ── Step 1: remove demo package and workflow ──────────────
   let hasChanges = false;
 
@@ -218,6 +236,13 @@ async function init(): Promise<void> {
         execSync("git remote set-url --push upstream DISABLED", { cwd: ROOT, stdio: "ignore" });
         write(`  ${COLOR.green}✓${COLOR.reset} Upstream remote configured ${COLOR.dim}(pull-only — push disabled)${COLOR.reset}\n`);
         write(`  ${COLOR.dim}→ git fetch upstream && git merge upstream/main${COLOR.reset}\n`);
+        // Enable merge.ours driver for .gitattributes protection
+        try {
+          execSync("git config merge.ours.driver true", { cwd: ROOT, stdio: "ignore" });
+          write(`  ${COLOR.green}✓${COLOR.reset} merge.ours driver enabled ${COLOR.dim}(protects demo files during upstream sync)${COLOR.reset}\n`);
+        } catch {
+          // ignore
+        }
       } else {
         write(`  ${COLOR.dim}ℹ upstream remote already exists, skipping${COLOR.reset}\n`);
       }
@@ -277,6 +302,13 @@ async function init(): Promise<void> {
         execSync("git remote add upstream https://github.com/opvibes/embark.git", { cwd: ROOT, stdio: "ignore" });
         execSync("git remote set-url --push upstream DISABLED", { cwd: ROOT, stdio: "ignore" });
         write(`  ${COLOR.green}✓${COLOR.reset} Upstream remote configured ${COLOR.dim}(pull-only — push disabled)${COLOR.reset}\n`);
+        // Enable merge.ours driver for .gitattributes protection
+        try {
+          execSync("git config merge.ours.driver true", { cwd: ROOT, stdio: "ignore" });
+          write(`  ${COLOR.green}✓${COLOR.reset} merge.ours driver enabled ${COLOR.dim}(protects demo files during upstream sync)${COLOR.reset}\n`);
+        } catch {
+          // ignore
+        }
       } catch {
         write(`  ${COLOR.yellow}⚠${COLOR.reset} Could not configure upstream remote automatically\n`);
       }

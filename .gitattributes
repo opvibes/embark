@@ -1,0 +1,4 @@
+# Prevent demo package from being re-introduced during upstream merges.
+# Requires: git config merge.ours.driver true  (done by `bun run init`)
+packages/embark/** merge=ours
+.github/workflows/embark.yml merge=ours

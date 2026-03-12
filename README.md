@@ -49,7 +49,7 @@ git clone https://github.com/opvibes/embark.git
 cd embark
 bun install
 
-# initialize (removes demo package, optionally removes .git)
+# initialize (removes demo package, configures upstream remote, removes badges)
 bun run init
 
 # create a new package (interactive)
@@ -61,6 +61,8 @@ git add . && git commit -m "feat: my new app"
 # push — only changed packages deploy
 git push origin main
 ```
+
+> **Forking?** See [Using as a Fork](#using-as-a-fork) for how to pull upstream updates without re-introducing the demo package.
 
 ## Creating a New Package
 
@@ -224,10 +226,34 @@ On `git commit`, these scripts run automatically:
 |-------|--------|-------------|
 | 1 | `ensure-deploy-config.ts` | Prompts for missing required fields in `.embark.jsonc` (name, title, subdomain, description, deploy) |
 | 2 | `generate-workflows.ts` | Creates GitHub Actions workflow for new packages |
-| 3 | `sync-workflows.ts` | Syncs existing workflows with template |
+| 3 | `sync-workflows.ts` | Syncs existing workflows with template (preserves `# EMBARK:CUSTOM` blocks) |
 | 4 | `cleanup-orphan-workflows.ts` | Removes workflows for deleted/external packages |
 | 5 | `generate-dockerfiles-ai.ts` | Generates Dockerfiles (AI or default) |
 | 6 | `update-readme-packages.ts` | Updates the packages table in README |
+
+### Customizing Workflows (`# EMBARK:CUSTOM`)
+
+You can add custom steps to a generated workflow without losing them when the template is updated. Wrap your content in `# EMBARK:CUSTOM` markers:
+
+```yaml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # EMBARK:CUSTOM
+      - name: My custom step
+        run: echo "this is never overwritten by sync"
+      # END EMBARK:CUSTOM
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+```
+
+**Rules:**
+- Everything between the markers is preserved when `sync-workflows` runs
+- The sync compares the workflow **without** custom blocks against the template — if they match, nothing happens (no prompt, no overwrite)
+- If the template changed, sync applies the update and **re-inserts** your custom block at the same position
+- If the surrounding context line was removed from the new template, your custom block is appended at the end
 
 ## Pre-push Hooks
 
@@ -263,6 +289,8 @@ embark/
 | `new-package` | `bun run new-package` | Interactively create a new package |
 | `test` | `bun run test` | Run script tests with coverage |
 | `sync-workflows` | `bun run sync-workflows` | Sync workflows with template |
+| `sync-upstream` | `bun run sync-upstream` | Pull updates from upstream embark, preserving fork customizations |
+| `init` | `bun run init` | Initialize repo for personal use (remove demo, configure upstream) |
 
 ## Tests
 
@@ -274,7 +302,7 @@ bun run test
 bun test scripts/__tests__/create-package.test.ts
 ```
 
-Coverage threshold: **77%** (configured in `bunfig.toml`)
+Coverage threshold: **65%** (configured in `bunfig.toml` — orchestration scripts that call git/bun are integration-level and excluded from unit test coverage)
 
 ## Deploy
 
@@ -323,6 +351,64 @@ commit → push to main
 ```
 
 **Unchanged packages are never rebuilt or redeployed.**
+
+## Using as a Fork
+
+Embark is designed to be forked and used as the base for your own monorepo. After forking:
+
+### 1. Initialize the fork
+
+```bash
+bun install
+bun run init
+```
+
+`bun run init` will:
+- Remove the demo package (`packages/embark`) and its workflow
+- Remove embark-specific badges from `README.md`
+- Configure an `upstream` remote pointing to `opvibes/embark` (push-disabled)
+- Enable the `merge.ours.driver` for `.gitattributes` protection
+
+### 2. Pull upstream updates
+
+When embark releases improvements (new scripts, template updates, bug fixes), sync them into your fork:
+
+```bash
+bun run sync-upstream
+```
+
+This command:
+1. Fetches from `upstream`
+2. Merges `upstream/main` without committing
+3. Automatically removes `packages/embark` and `workflows/embark.yml` if they were re-introduced
+4. Normalizes `apps.jsonc`, `package.json` scripts, and README packages table
+5. Commits with `chore(upstream): sync changes from embark@<sha>`
+
+### Why not just `git pull upstream main`?
+
+You can, but there are caveats:
+
+| Scenario | `git pull upstream main` | `bun run sync-upstream` |
+|---|---|---|
+| `merge.ours.driver` not configured | ❌ re-introduces demo files | ✅ always works |
+| Demo files already in fork history | ✅ protected by `.gitattributes` | ✅ protected |
+| New demo files added in upstream | ⚠️ may re-introduce | ✅ removed automatically |
+| Normalizes `apps.jsonc` / `package.json` | ❌ no | ✅ yes |
+
+**Recommendation:** always use `bun run sync-upstream`.
+
+### Commit message conventions
+
+The repo uses [Conventional Commits](https://www.conventionalcommits.org/). The following commit types are automatically **ignored** by commitlint:
+
+- `Merge branch '...'` — local merges
+- `Merge pull request #...` — GitHub PR merges
+- `Revert "..."` — git reverts
+- `v1.2.3` — version bump tags
+
+For your own upstream syncs written manually, use: `chore: pull updates from embark`.
+
+---
 
 ## Release (Monorepo Versioning)
 
