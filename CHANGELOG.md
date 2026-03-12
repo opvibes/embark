@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/opvibes/embark/compare/v1.2.0...v1.3.0) (2026-03-12)
+
+
+### Features
+
+* melhorar sync-workflows CLI e cleaner workflow ([697dc16](https://github.com/opvibes/embark/commit/697dc16e6d97bcb95e3d105c998b3d768546f7bd))
+
 ## [1.2.0](https://github.com/opvibes/embark/compare/v1.1.0...v1.2.0) (2026-03-12)
 
 
