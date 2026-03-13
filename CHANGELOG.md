@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/opvibes/embark/compare/v1.4.0...v1.5.0) (2026-03-13)
+
+
+### Features
+
+* sync automático do workflow ao alterar .embark.jsonc ([cdb44a6](https://github.com/opvibes/embark/commit/cdb44a647eb43bb591d01c527049a8f3d9bee4e3))
+
 ## [1.4.0](https://github.com/opvibes/embark/compare/v1.3.0...v1.4.0) (2026-03-13)
 
 
