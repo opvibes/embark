@@ -1,2 +1,1 @@
 #!/bin/sh
-git push --quiet 2>&1 && echo "[post-commit] pushed to remote" || echo "[post-commit] push skipped (no remote or already up to date)"

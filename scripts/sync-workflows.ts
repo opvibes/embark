@@ -92,7 +92,7 @@ const WORKFLOWS_DIR = join(ROOT, ".github", "workflows");
 const TEMPLATE_PATH = join(ROOT, "templates", "workflow.netlify.template.yml");
 
 // Workflows do sistema que não correspondem a pacotes e nunca devem ser sincronizados
-const SYSTEM_WORKFLOWS = new Set(["bootstrap"]);
+const SYSTEM_WORKFLOWS = new Set(["bootstrap", "cleaner", "release"]);
 const PLACEHOLDER = "__PACKAGE_NAME__";
 const PLACEHOLDER_LOWERCASE = "__PACKAGE_NAME_LOWERCASE__";
 const PLACEHOLDER_SUBDOMAIN = "__SUBDOMAIN__";

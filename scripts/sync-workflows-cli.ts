@@ -38,32 +38,10 @@ async function main() {
 
   console.log("");
 
-  // Close stdin and clean up resources
-  const stdin = process.stdin;
-  if (stdin.isTTY) {
-    try {
-      stdin.setRawMode(false);
-    } catch {
-      // Ignore errors
-    }
-  }
-  stdin.removeAllListeners();
-  stdin.pause();
+  process.exit(0);
 }
 
 main().catch((error) => {
-  // Restore terminal in case of error
-  const stdin = process.stdin;
-  if (stdin.isTTY) {
-    try {
-      stdin.setRawMode(false);
-    } catch {
-      // Ignore errors when restoring
-    }
-  }
-  stdin.removeAllListeners();
-  stdin.pause();
-
   console.error("[sync-workflows] error:", (error as Error).message);
   process.exit(1);
 });
