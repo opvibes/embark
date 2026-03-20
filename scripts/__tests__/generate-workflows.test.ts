@@ -377,7 +377,7 @@ describe("processPackageWorkflow - I/O integration", () => {
     }
   });
 
-  test("cloudflare-workers workflow has build and deploy jobs", async () => {
+  test("cloudflare-workers workflow deploys directly without build/artifact", async () => {
     const testDir = join(tmpdir(), `test-workflow-cfworkers-multijob-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
 
@@ -385,13 +385,14 @@ describe("processPackageWorkflow - I/O integration", () => {
       await processPackageWorkflow("my-api", "cloudflare-workers", true, testDir);
       const content = readFileSync(join(testDir, "my-api.yml"), "utf-8");
 
-      // Build job uploads artifact
-      expect(content).toContain("actions/upload-artifact@v4");
-      expect(content).toContain("name: build-my-api");
+      // No build/artifact — wrangler handles everything
+      expect(content).not.toContain("actions/upload-artifact@v4");
+      expect(content).not.toContain("actions/download-artifact@v4");
 
-      // Deploy job uses wrangler
+      // Deploy job uses wrangler directly
       expect(content).toContain("cloudflare/wrangler-action@v3");
       expect(content).toContain("command: deploy");
+      expect(content).toContain("bun install");
 
       // DNS job depends on deploy
       expect(content).toContain("needs: deploy");
