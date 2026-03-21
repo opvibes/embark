@@ -59,46 +59,12 @@ jobs:
 
           WORKER_NAME="${PACKAGE_NAME}"
 
-          echo "Checking for existing DNS records..."
-          EXISTING_RECORDS=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=${FULL_DOMAIN}" \
-            -H "Authorization: Bearer ${CF_TOKEN}" \
-            -H "Content-Type: application/json")
-
-          RECORD_ID=$(echo "$EXISTING_RECORDS" | jq -r '.result[0].id // empty')
-          if [ -n "$RECORD_ID" ] && [ "$RECORD_ID" != "null" ]; then
-            echo "Deleting existing DNS record: $RECORD_ID"
-            curl -s -X DELETE \
-              "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${RECORD_ID}" \
-              -H "Authorization: Bearer ${CF_TOKEN}" \
-              -H "Content-Type: application/json"
-            echo "✓ Old DNS record deleted"
-            sleep 2
-          fi
-
-          echo "Creating CNAME record: ${FULL_DOMAIN} -> ${WORKER_NAME}.workers.dev"
-          CNAME_RESPONSE=$(curl -s -X POST \
-            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records" \
-            -H "Authorization: Bearer ${CF_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"CNAME\",\"name\":\"${CNAME_NAME}\",\"content\":\"${WORKER_NAME}.workers.dev\",\"proxied\":true}")
-
-          CNAME_SUCCESS=$(echo "$CNAME_RESPONSE" | jq -r '.success')
-          if [ "$CNAME_SUCCESS" = "true" ]; then
-            echo "✓ CNAME created: ${FULL_DOMAIN} -> ${WORKER_NAME}.workers.dev"
-          else
-            CNAME_ERROR=$(echo "$CNAME_RESPONSE" | jq -r '.errors[0].message // "Unknown"')
-            echo "⚠️ CNAME setup: $CNAME_ERROR (may already exist)"
-          fi
-
-          sleep 3
-
-          echo "Adding custom domain route to Worker..."
+          echo "Configuring custom domain: ${FULL_DOMAIN} -> ${WORKER_NAME}"
           RESPONSE=$(curl -s -X PUT \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/domains" \
             -H "Authorization: Bearer ${CF_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"hostname\":\"${FULL_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"environment\":\"production\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${DOMAIN}\"}")
+            --data "{\"hostname\":\"${FULL_DOMAIN}\",\"service\":\"${WORKER_NAME}\",\"environment\":\"production\",\"zone_id\":\"${CF_ZONE_ID}\",\"zone_name\":\"${DOMAIN}\",\"override_existing_dns_record\":true,\"override_existing_origin\":true}")
 
           echo "Response: $RESPONSE"
 
