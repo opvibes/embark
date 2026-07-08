@@ -282,6 +282,8 @@ You can add custom steps to a generated workflow without losing them when the te
 - If the template changed, sync applies the update and **re-inserts** your custom block at the same position
 - If the surrounding context line was removed from the new template, your custom block is appended at the end
 
+> **Guaranteed preservation:** wrap per-deploy customizations in `# EMBARK:CUSTOM` blocks. Manual edits **outside** these blocks are preserved in most cases, but can be overwritten if they conflict with the **same region** changed by the template — in that conflict the template wins. Use `# EMBARK:CUSTOM` for anything you cannot afford to lose.
+
 ## Pre-push Hooks
 
 On `git push`, the full test suite runs. Push is blocked if tests fail.

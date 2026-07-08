@@ -330,6 +330,8 @@ Syncs existing workflows with the template. Offers three options:
 - **Merge one by one** — review each workflow individually (with Merge / Skip / Skip all per workflow)
 - **Skip all** — skip all workflow updates
 
+**Guaranteed preservation:** wrap per-deploy customizations in `# EMBARK:CUSTOM ... # END EMBARK:CUSTOM` blocks. The 3-way merge also preserves manual edits made **outside** those blocks in most cases, but if a manual edit falls in the **same region** (same LCS gap) as a template addition/change, the template wins and that edit is silently overwritten. For anything you cannot afford to lose, use `# EMBARK:CUSTOM`.
+
 ### 4. `cleanup-orphan-workflows.ts`
 
 Removes workflows whose packages have been deleted or switched to external deploy, and adds the removal to the commit automatically.
