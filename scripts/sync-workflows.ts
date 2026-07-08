@@ -81,8 +81,92 @@ export function mergeCustomBlocksIntoTemplate(templateContent: string, blocks: C
   return result;
 }
 
+/**
+ * Returns the matched (i, j) index pairs of the Longest Common Subsequence
+ * between two line arrays. These are the anchor lines shared by both versions.
+ */
+function lcsPairs(a: string[], b: string[]): Array<[number, number]> {
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+
+  for (let i = n - 1; i >= 0; i--) {
+    const row = dp[i]!;
+    const next = dp[i + 1]!;
+    for (let j = m - 1; j >= 0; j--) {
+      row[j] = a[i] === b[j] ? next[j + 1]! + 1 : Math.max(next[j]!, row[j + 1]!);
+    }
+  }
+
+  const pairs: Array<[number, number]> = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      pairs.push([i, j]);
+      i++;
+      j++;
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Three-way-style merge that propagates the template delta while preserving
+ * manual edits the developer made outside EMBARK:CUSTOM blocks.
+ *
+ * Using the LCS of both versions as the implicit base:
+ * - lines present only in `expected` (template additions) are applied;
+ * - lines present only in `current` (pure manual insertions) are preserved;
+ * - when both sides changed the same region (a template modification), the
+ *   template wins so the file stays valid (no duplicated keys).
+ *
+ * Note: a pure template deletion is indistinguishable from a manual insertion
+ * without a stored base, so it is conservatively kept (never silently drops
+ * developer content).
+ */
+export function mergeManualEdits(current: string, expected: string): string {
+  if (current === expected) return expected;
+
+  const a = current.split("\n");
+  const b = expected.split("\n");
+  const anchors = lcsPairs(a, b);
+
+  const out: string[] = [];
+  const emitGap = (aGap: string[], bGap: string[]): void => {
+    // Template gap wins when present (addition or modification); otherwise keep
+    // the manual-only lines from the current file.
+    if (bGap.length > 0) out.push(...bGap);
+    else if (aGap.length > 0) out.push(...aGap);
+  };
+
+  let ai = 0;
+  let bi = 0;
+  for (const [pa, pb] of anchors) {
+    emitGap(a.slice(ai, pa), b.slice(bi, pb));
+    out.push(a[pa]!);
+    ai = pa + 1;
+    bi = pb + 1;
+  }
+  emitGap(a.slice(ai), b.slice(bi));
+
+  return out.join("\n");
+}
+
 function normalizeForComparison(content: string): string {
-  return content.replace(/\n{3,}/g, "\n\n").trim();
+  return content
+    .split("\n")
+    // Strip trailing whitespace per line: empty template placeholders
+    // (e.g. __SUBMODULES_WITH__, __SUBMODULE_PATH__) collapse to "" and can
+    // leave indentation behind, producing a false diff against the generated file.
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 const ROOT = join(import.meta.dirname, "..");
@@ -293,7 +377,11 @@ async function getExpectedContentForPackage(
 ): Promise<string> {
   const pkgDir = join(packagesDir, packageName);
   const config = await readEmbarkConfig(pkgDir);
-  const appDeployment = config?.deploy?.appDeployment ?? "netlify";
+  // Must match the generation default (generate-workflows.ts / getAppDeployment
+  // in embark-config.ts both default to "gcp"). A "netlify" default here would
+  // never match the gcp-generated workflow for packages without an explicit
+  // appDeployment, causing a perpetual false-positive diff on every sync.
+  const appDeployment = config?.deploy?.appDeployment ?? "gcp";
   const cloudflareUse = config?.deploy?.cloudflareUse ?? false;
   const subdomain = config?.subdomain;
   const rootDomain = config?.rootDomain;
@@ -433,7 +521,10 @@ export async function syncWorkflows(
       }
 
       if (approve) {
-        const mergedContent = mergeCustomBlocksIntoTemplate(expectedContent, customBlocks);
+        // First propagate the template delta while preserving manual edits made
+        // outside custom blocks, then re-insert the EMBARK:CUSTOM blocks.
+        const withManualEdits = mergeManualEdits(strippedCurrent, expectedContent);
+        const mergedContent = mergeCustomBlocksIntoTemplate(withManualEdits, customBlocks);
         await writeFile(workflowPath, mergedContent, "utf-8");
         console.log(`${colors.green}✅ ${workflow}.yml updated${colors.reset}`);
         updated++;

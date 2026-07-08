@@ -14,6 +14,7 @@ import {
   extractCustomBlocks,
   stripCustomBlocks,
   mergeCustomBlocksIntoTemplate,
+  mergeManualEdits,
   CUSTOM_BLOCK_START,
   CUSTOM_BLOCK_END,
 } from "../sync-workflows";
@@ -311,7 +312,7 @@ describe("sync-workflows", () => {
 
     it("returns 0/0 when acceptAll is undefined and no customizations exist", async () => {
       const { buildWorkflowContent } = await import("../generate-workflows");
-      const expected = await buildWorkflowContent("my-app", "netlify", false);
+      const expected = await buildWorkflowContent("my-app", "gcp", false);
       await writeFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), expected);
 
       const result = await syncWorkflows(
@@ -364,12 +365,13 @@ describe("sync-workflows", () => {
     afterEach(teardownTest);
 
     // These tests use a custom packagesDir (TEST_DIR/packages) with no packages,
-    // so getExpectedContentForPackage defaults to netlify without cloudflare.
+    // so getExpectedContentForPackage defaults to gcp without cloudflare (matching
+    // the generation default in generate-workflows.ts / embark-config.ts).
 
     it("returns 0 updated and 0 skipped when workflows match expected content", async () => {
-      // Use a workflow name that has no package config → defaults to netlify/no-cf
+      // Use a workflow name that has no package config → defaults to gcp/no-cf
       const { buildWorkflowContent } = await import("../generate-workflows");
-      const expectedContent = await buildWorkflowContent("my-app", "netlify", false);
+      const expectedContent = await buildWorkflowContent("my-app", "gcp", false);
 
       await writeFile(TEST_TEMPLATE, expectedContent);
       await writeFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), expectedContent);
@@ -387,7 +389,7 @@ describe("sync-workflows", () => {
 
       const result = await syncWorkflows(TEST_WORKFLOWS_DIR, TEST_TEMPLATE, true, join(TEST_DIR, "packages"));
 
-      // my-app has no config, so expected = netlify template (different from customized)
+      // my-app has no config, so expected = gcp template (different from customized)
       expect(result.updated).toBe(1);
     });
 
@@ -490,7 +492,7 @@ describe("sync-workflows", () => {
 
     it("one_by_one mode: skips workflows already matching expected content", async () => {
       const { buildWorkflowContent } = await import("../generate-workflows");
-      const expectedContent = await buildWorkflowContent("my-app", "netlify", false);
+      const expectedContent = await buildWorkflowContent("my-app", "gcp", false);
       await writeFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), expectedContent);
 
       const approveCallback = async () => true;
@@ -576,7 +578,7 @@ describe("sync-workflows", () => {
 
     it("does not trigger sync when only custom blocks differ from template", async () => {
       const { buildWorkflowContent } = await import("../generate-workflows");
-      const templateContent = await buildWorkflowContent("my-app", "netlify", false);
+      const templateContent = await buildWorkflowContent("my-app", "gcp", false);
       // Add a custom block to the template content (simulates user customization)
       const withCustom = templateContent + `\n${CUSTOM_BLOCK_START}\n# my custom thing\n${CUSTOM_BLOCK_END}\n`;
 
@@ -614,6 +616,158 @@ describe("sync-workflows", () => {
       const writtenContent = await readFile(join(TEST_WORKFLOWS_DIR, "my-app.yml"), "utf-8");
       expect(writtenContent).toContain("preserved content");
       expect(writtenContent).toContain(CUSTOM_BLOCK_START);
+    });
+  });
+
+  describe("mergeManualEdits", () => {
+    it("returns expected unchanged when current equals expected", () => {
+      const content = "a\nb\nc";
+      expect(mergeManualEdits(content, content)).toBe(content);
+    });
+
+    it("preserves manual-only inserted lines", () => {
+      const current = "a\nMANUAL\nb";
+      const expected = "a\nb";
+      expect(mergeManualEdits(current, expected)).toBe("a\nMANUAL\nb");
+    });
+
+    it("applies template additions", () => {
+      const current = "a\nb";
+      const expected = "a\nNEW\nb";
+      expect(mergeManualEdits(current, expected)).toBe("a\nNEW\nb");
+    });
+
+    it("template wins on a modified line (no duplicate)", () => {
+      const current = "a\nx=old\nb";
+      const expected = "a\nx=new\nb";
+      expect(mergeManualEdits(current, expected)).toBe("a\nx=new\nb");
+    });
+
+    it("preserves manual insertion while applying template modification", () => {
+      const current = "a\nMANUAL\nb\nx=old\nc";
+      const expected = "a\nb\nx=new\nc";
+      const result = mergeManualEdits(current, expected);
+      expect(result).toContain("MANUAL");
+      expect(result).toContain("x=new");
+      expect(result).not.toContain("x=old");
+    });
+  });
+
+  describe("sync-workflows false-positive & manual preservation (bugfix j-20260708-n8)", () => {
+    beforeEach(setupTest);
+    afterEach(teardownTest);
+
+    async function writePkgConfig(
+      name: string,
+      extraDeploy: Record<string, unknown> = {},
+    ): Promise<void> {
+      const pkgDir = join(TEST_DIR, "packages", name);
+      await mkdir(pkgDir, { recursive: true });
+      await writeFile(
+        join(pkgDir, ".embark.jsonc"),
+        JSON.stringify({
+          deploy: { cloudflareUse: false, workflowGen: true, ...extraDeploy },
+          name,
+          title: name,
+          subdomain: name,
+          description: "test",
+        }),
+      );
+    }
+
+    it("no perpetual diff: package without appDeployment matches the gcp-generated workflow", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      // generate-workflows.ts defaults appDeployment to "gcp"
+      const generated = await buildWorkflowContent("svc", "gcp", false);
+      await writePkgConfig("svc"); // no appDeployment → sync must also default to gcp
+      await writeFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), generated);
+
+      const result = await syncWorkflows(
+        TEST_WORKFLOWS_DIR,
+        TEST_TEMPLATE,
+        true,
+        join(TEST_DIR, "packages"),
+      );
+
+      expect(result.updated).toBe(0);
+      expect(result.skipped).toBe(0);
+    });
+
+    it("ignores trailing whitespace per line when comparing", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      const generated = await buildWorkflowContent("svc", "gcp", false);
+      const withTrailingWs = generated
+        .split("\n")
+        .map((line) => line + "   ")
+        .join("\n");
+      await writePkgConfig("svc");
+      await writeFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), withTrailingWs);
+
+      const result = await syncWorkflows(
+        TEST_WORKFLOWS_DIR,
+        TEST_TEMPLATE,
+        true,
+        join(TEST_DIR, "packages"),
+      );
+
+      expect(result.updated).toBe(0);
+      expect(result.skipped).toBe(0);
+    });
+
+    it("propagates a real template change to the destination", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      const expected = await buildWorkflowContent("svc", "gcp", false);
+      // Simulate an older on-disk version by rolling back an action version.
+      const old = expected.replace("actions/checkout@v4", "actions/checkout@v3");
+      expect(old).not.toBe(expected);
+      await writePkgConfig("svc");
+      await writeFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), old);
+
+      const result = await syncWorkflows(
+        TEST_WORKFLOWS_DIR,
+        TEST_TEMPLATE,
+        true,
+        join(TEST_DIR, "packages"),
+      );
+
+      expect(result.updated).toBe(1);
+      const written = await readFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), "utf-8");
+      expect(written).toContain("actions/checkout@v4");
+      expect(written).not.toContain("actions/checkout@v3");
+    });
+
+    it("preserves manual edits made outside EMBARK:CUSTOM blocks", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      const expected = await buildWorkflowContent("svc", "gcp", false);
+      const manualLine = "      # MANUAL: extra notification step";
+      const lines = expected.split("\n");
+      lines.splice(3, 0, manualLine);
+      const current = lines.join("\n");
+      await writePkgConfig("svc");
+      await writeFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), current);
+
+      await syncWorkflows(TEST_WORKFLOWS_DIR, TEST_TEMPLATE, true, join(TEST_DIR, "packages"));
+
+      const written = await readFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), "utf-8");
+      expect(written).toContain("# MANUAL: extra notification step");
+    });
+
+    it("preserves manual edit AND propagates template change simultaneously", async () => {
+      const { buildWorkflowContent } = await import("../generate-workflows");
+      const expected = await buildWorkflowContent("svc", "gcp", false);
+      const manualLine = "      # MANUAL: keep me";
+      const lines = expected.split("\n");
+      lines.splice(3, 0, manualLine);
+      const current = lines.join("\n").replace("actions/checkout@v4", "actions/checkout@v3");
+      await writePkgConfig("svc");
+      await writeFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), current);
+
+      await syncWorkflows(TEST_WORKFLOWS_DIR, TEST_TEMPLATE, true, join(TEST_DIR, "packages"));
+
+      const written = await readFile(join(TEST_WORKFLOWS_DIR, "svc.yml"), "utf-8");
+      expect(written).toContain("# MANUAL: keep me");
+      expect(written).toContain("actions/checkout@v4");
+      expect(written).not.toContain("actions/checkout@v3");
     });
   });
 });
