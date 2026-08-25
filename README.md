@@ -74,9 +74,13 @@ bun run new-package
 The CLI will ask for **required fields**:
 1. **name** — package name (camelCase or kebab-case)
 2. **title** — human-readable title (e.g. "My Awesome App")
-3. **subdomain** — subdomain for deployment (e.g. `my-app` → my-app.embark.dev)
-4. **description** — package description
-5. **deploy target** — Cloud Run, Netlify, Cloudflare Workers, or Other
+3. **description** — package description
+4. **deploy target** — Cloud Run, Netlify, Cloudflare Pages, Cloudflare Workers, or Other
+
+Everything after the deploy target depends on it — each target only asks the
+questions that apply to it. Domain questions (custom domain, root domain,
+**subdomain**) are only asked for targets that actually manage a custom domain,
+and only when you say you want one. Cloud Run never asks them.
 
 Then creates the complete structure:
 - `packages/<name>/` with `src/index.ts`, `package.json`, `tsconfig.json`
@@ -89,16 +93,24 @@ Auto-adds to git. Just commit — pre-commit hooks handle workflows, Dockerfiles
 
 ### Cloud Run (default)
 
-Auto-generates a GitHub Actions workflow and Dockerfile. On push, builds a Docker image and deploys to Cloud Run.
+The whole flow is **Dockerfile → workflow → Cloud Run deploy**. On push, the
+workflow builds the image, pushes it to Artifact Registry and deploys to Cloud
+Run. The service is served at its generated Cloud Run URL — Embark does not
+configure a custom domain for GCP, so there is no `subdomain`, no `rootDomain`
+and no Cloudflare step.
 
 ```jsonc
 // .embark.jsonc
 {
-  "deploy": "cloud-run",
+  "deploy": {
+    "appDeployment": "gcp",
+    "workflowGen": true,
+    "cloudflareUse": false
+  },
   "name": "myApp",
   "title": "My App",
-  "subdomain": "my-app",
-  "description": "My awesome application"
+  "description": "My awesome application",
+  "useSubmodule": false
 }
 ```
 
@@ -140,7 +152,7 @@ With `workflow: "generate"`, the workflow will:
 
 ### Root Domain Deployment
 
-By default, every package is deployed to a **subdomain** (e.g. `my-app.domain.com`). However, **exactly one** package in the monorepo can be deployed to the **root domain** (`domain.com`) instead.
+For targets that manage a custom domain (Netlify, Cloudflare Pages, Cloudflare Workers), a package is deployed to a **subdomain** (e.g. `my-app.domain.com`) by default. However, **exactly one** package in the monorepo can be deployed to the **root domain** (`domain.com`) instead. This does not apply to GCP, which is always served at its Cloud Run URL.
 
 To enable root domain deployment, set `rootDomain: true` in `.embark.jsonc`:
 
@@ -154,7 +166,6 @@ To enable root domain deployment, set `rootDomain: true` in `.embark.jsonc`:
   },
   "name": "myApp",
   "title": "My App",
-  "subdomain": "my-app",  // still required, used as fallback identifier
   "description": "My main website",
   "rootDomain": true       // deploys to domain.com instead of my-app.domain.com
 }
@@ -164,10 +175,10 @@ To enable root domain deployment, set `rootDomain: true` in `.embark.jsonc`:
 > - Only **ONE** package can have `rootDomain: true` at a time
 > - Assigning root domain to a second package will **remove it from the first** (with confirmation)
 > - The interactive CLI (`ensure-deploy-config`) will warn you about consequences before confirming
-> - `subdomain` is still required even when `rootDomain: true` (used as an identifier)
+> - `subdomain` is not required when `rootDomain: true` — the package is served at the root
 
 When configuring packages via `bun run new-package` or during the pre-commit hook, the CLI will:
-1. Ask if you want to deploy to the root domain after choosing the subdomain
+1. Ask if you want a custom domain, and only then whether it should be the root domain
 2. Show a warning that only one package can use root domain
 3. If another package already has root domain, show **two confirmation prompts** before replacing it
 4. Automatically update the previous package's `.embark.jsonc` to remove its root domain status
@@ -358,7 +369,6 @@ Required when `appDeployment: "gcp"`.
 | `GCP_PROJECT_ID` | Google Cloud project ID |
 | `GCP_SA_KEY` | Service account JSON (deploy permissions) |
 | `GCP_REGION` | Cloud Run region (e.g. `us-central1`) |
-| `DOMAIN` | Base domain (e.g. `embark.dev`) — used to set the `DOMAIN` env in the workflow |
 
 #### Netlify
 
@@ -393,7 +403,7 @@ Required when `appDeployment: "cloudflare-workers"`.
 
 #### Cloudflare (optional, when `cloudflareUse: true`)
 
-Added on top of GCP or Netlify secrets. Required to create/update DNS CNAME records automatically.
+Added on top of the Netlify secrets. Required to create/update DNS CNAME records automatically. Not applicable to GCP.
 
 | Secret | Description |
 |--------|-------------|

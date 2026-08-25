@@ -29,7 +29,9 @@ export interface EmbarkConfig {
   title: string;
   /**
    * Subdomain for deployment (e.g. "showcase" -> showcase.embark.dev).
-   * Not required when rootDomain is true.
+   * Only required when a custom domain is actually in use — i.e. when
+   * `deploy.cloudflareUse` is true and `rootDomain` is not. Never required for
+   * `gcp`, which does not manage custom DNS.
    */
   subdomain?: string;
   /** Package description */
@@ -49,7 +51,8 @@ export interface EmbarkConfig {
 }
 
 /**
- * Required fields that must be present in .embark.jsonc
+ * Required fields that must be present in .embark.jsonc.
+ * `subdomain` is conditional — see `requiresSubdomain` in scripts/embark-config.ts.
  */
 export const REQUIRED_EMBARK_FIELDS: (keyof EmbarkConfig)[] = [
   "deploy",

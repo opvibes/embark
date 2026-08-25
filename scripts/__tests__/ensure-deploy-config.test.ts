@@ -237,7 +237,8 @@ describe("ensure-deploy-config", () => {
       expect(result[0]?.hasConfig).toBe(true);
       expect(result[0]?.missingFields).toContain("name");
       expect(result[0]?.missingFields).toContain("title");
-      expect(result[0]?.missingFields).toContain("subdomain");
+      // gcp is served at its Cloud Run URL — no subdomain is ever asked for.
+      expect(result[0]?.missingFields).not.toContain("subdomain");
       expect(result[0]?.missingFields).toContain("description");
       expect(result[0]?.missingFields).not.toContain("deploy");
     });

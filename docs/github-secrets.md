@@ -8,17 +8,15 @@ Documentation for environment variables (secrets) required for each deploy type 
 
 ## Google Cloud Run (GCP)
 
-### Basic Deploy (without custom domain)
+The GCP flow is **Dockerfile → workflow → Cloud Run deploy**. The service is
+served at its generated Cloud Run URL; Embark does not configure a custom domain
+for GCP, so there is no subdomain and no DNS secret to set.
 
 | Secret | Description | Example |
 |--------|-------------|---------|
 | `GCP_PROJECT_ID` | Google Cloud project ID | `my-project-123456` |
 | `GCP_SA_KEY` | Service Account JSON with deploy permissions | `{"type": "service_account", ...}` |
 | `GCP_REGION` | Cloud Run region | `us-central1` |
-
-### Deploy with Custom Domain (Cloudflare DNS)
-
-Add the secrets above **+** those from the [Cloudflare DNS Manager](#cloudflare-dns-manager) section.
 
 ---
 
@@ -106,7 +104,7 @@ When creating the token in **My Profile → API Tokens → Create Token → Crea
 
 ## Cloudflare DNS Manager
 
-Used to configure custom subdomains for Netlify or GCP deploys.
+Used to configure custom subdomains for Netlify deploys.
 
 | Secret | Description | Where to find |
 |--------|-------------|----------------|
@@ -130,8 +128,7 @@ When creating the token in **My Profile → API Tokens → Create Token → Crea
 
 | Scenario | Required Secrets |
 |----------|------------------|
-| GCP basic | `GCP_PROJECT_ID`, `GCP_SA_KEY`, `GCP_REGION` |
-| GCP + Cloudflare DNS | GCP basic + `CF_TOKEN`, `CF_ZONE_ID`, `DOMAIN` |
+| GCP (Cloud Run) | `GCP_PROJECT_ID`, `GCP_SA_KEY`, `GCP_REGION` |
 | Netlify basic | `NETLIFY_TOKEN`, `DOMAIN` |
 | Netlify + Cloudflare DNS | Netlify basic + `CF_TOKEN`, `CF_ZONE_ID` |
 | Cloudflare Pages | `CF_TOKEN_PAGES`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`, `DOMAIN` |
@@ -150,7 +147,7 @@ If you already have secrets configured:
 |--------------|--------------|
 | `CF_ZONE_ID` | All Cloudflare scenarios |
 | `DOMAIN` | All scenarios |
-| `CF_TOKEN` | Only DNS (Netlify/GCP + Cloudflare) |
+| `CF_TOKEN` | Only DNS (Netlify + Cloudflare) |
 
 ### Security
 

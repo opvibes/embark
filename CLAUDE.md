@@ -106,9 +106,13 @@ bun run new-package
 The script will ask for the following **required fields**:
 1. **name** — package name (accepts `camelCase` or `kebab-case`)
 2. **title** — human-readable title (e.g. "My Awesome App")
-3. **subdomain** — subdomain for deployment (e.g. `my-app` → my-app.embark.dev)
-4. **description** — package description
-5. **deploy target** — Cloud Run, Netlify, Cloudflare Workers, or Other
+3. **description** — package description
+4. **deploy target** — Cloud Run, Netlify, Cloudflare Pages, Cloudflare Workers, or Other
+
+The deploy target is asked **before** anything that depends on it, and each
+target only asks its own options. Domain questions (custom domain, root domain,
+subdomain) are skipped entirely for targets that do not manage a custom domain —
+Cloud Run is served at its generated URL and never asks them.
 
 Then creates the complete structure with:
 - `packages/<package>` folder
@@ -311,11 +315,11 @@ On commit, these scripts run automatically in order:
 ### 1. `ensure-deploy-config.ts`
 
 Scans `packages/` for any package missing `.embark.jsonc` or with incomplete configuration. Interactively prompts for all required fields:
-- **deploy** — Cloud Run, Netlify, Cloudflare Workers, or Other
+- **deploy** — Cloud Run, Netlify, Cloudflare Pages, Cloudflare Workers, or Other (asked first)
 - **name** — package name
 - **title** — human-readable title
-- **subdomain** — subdomain for deployment
 - **description** — package description
+- **subdomain** — only when the chosen target manages a custom domain (see `requiresSubdomain` in `scripts/embark-config.ts`)
 
 If a package has a partial config (e.g. only `deploy`), only the missing fields will be requested.
 

@@ -66,6 +66,21 @@ export async function hasEmbarkConfig(packageDir: string): Promise<boolean> {
 }
 
 /**
+ * Whether this configuration needs a `subdomain` field.
+ *
+ * A subdomain only means something when a custom domain is actually in use:
+ * - root domain packages are served at domain.com, so there is no subdomain;
+ * - GCP is served at its generated Cloud Run URL and never manages custom DNS;
+ * - every other target needs one only when a custom domain was requested.
+ */
+export function requiresSubdomain(config: Partial<EmbarkConfig> | null): boolean {
+  if (!config) return false;
+  if (config.rootDomain === true) return false;
+  if (config.deploy?.appDeployment === "gcp") return false;
+  return config.deploy?.cloudflareUse === true;
+}
+
+/**
  * Returns the list of missing required fields in the config
  */
 export function getMissingFields(config: Partial<EmbarkConfig> | null): (keyof EmbarkConfig)[] {
@@ -74,10 +89,7 @@ export function getMissingFields(config: Partial<EmbarkConfig> | null): (keyof E
   }
 
   return REQUIRED_EMBARK_FIELDS.filter((field) => {
-    // subdomain is not required when deploying to root domain or CF Pages without custom domain
-    if (field === "subdomain" && config?.rootDomain === true) return false;
-    if (field === "subdomain" && config?.deploy?.appDeployment === "cloudflare-pages" && config?.deploy?.cloudflareUse === false) return false;
-    if (field === "subdomain" && config?.deploy?.appDeployment === "cloudflare-workers" && config?.deploy?.cloudflareUse === false) return false;
+    if (field === "subdomain" && !requiresSubdomain(config)) return false;
     const value = config[field];
     // useSubmodule is a boolean — false is a valid value, only undefined/null counts as missing
     if (field === "useSubmodule") return value === undefined || value === null;

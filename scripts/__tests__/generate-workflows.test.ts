@@ -200,7 +200,7 @@ describe("processPackageWorkflow - I/O integration", () => {
     }
   });
 
-  test("adds cloudflare steps when cloudflareUse=true for gcp", async () => {
+  test("never adds cloudflare/DNS steps for gcp, even with cloudflareUse=true", async () => {
     const testDir = join(tmpdir(), `test-workflow-gcp-cf-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
 
@@ -209,10 +209,12 @@ describe("processPackageWorkflow - I/O integration", () => {
       expect(result).toBe(true);
 
       const content = readFileSync(join(testDir, "my-app.yml"), "utf-8");
-      expect(content).toContain("if: true"); // dns job enabled when cloudflareUse=true
-      expect(content).toContain("Get or Create subdomain on Cloudflare");
+      // GCP is served at its Cloud Run URL: no dns job, no subdomain, no DOMAIN.
+      expect(content).not.toContain("Get or Create subdomain on Cloudflare");
+      expect(content).not.toContain("SUBDOMAIN");
+      expect(content).not.toContain("DOMAIN");
       expect(content).not.toContain("Register domain in Netlify");
-      expect(content).toContain("needs: deploy"); // dns job depends on deploy
+      expect(content).toContain("Deploy to Cloud Run");
     } finally {
       Bun.spawnSync(["rm", "-rf", testDir]);
     }
@@ -311,8 +313,8 @@ describe("processPackageWorkflow - I/O integration", () => {
       expect(content).toContain("needs.docker.outputs.image_url");
       expect(content).toContain("service_url: ${{ steps.run.outputs.service_url }}");
 
-      // DNS job uses deploy output
-      expect(content).toContain("needs.deploy.outputs.service_url");
+      // Deploy is the last job — there is no DNS job for gcp
+      expect(content).not.toContain("needs.deploy.outputs.service_url");
     } finally {
       Bun.spawnSync(["rm", "-rf", testDir]);
     }
