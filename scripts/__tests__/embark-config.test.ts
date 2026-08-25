@@ -180,14 +180,34 @@ describe("embark-config", () => {
     });
 
     it("should return missing fields when config has only deploy", () => {
+      // Default target is gcp, which never needs a subdomain.
       const missing = getMissingFields({ deploy: makeDeployConfig() });
       expect(missing).not.toContain("deploy");
       expect(missing).toContain("name");
       expect(missing).toContain("title");
-      expect(missing).toContain("subdomain");
+      expect(missing).not.toContain("subdomain");
       expect(missing).toContain("description");
       expect(missing).toContain("useSubmodule");
-      expect(missing).toHaveLength(5);
+      expect(missing).toHaveLength(4);
+    });
+
+    it("should require subdomain only when a custom domain is in use", () => {
+      const withDomain = getMissingFields({
+        deploy: makeDeployConfig({ appDeployment: "netlify", cloudflareUse: true }),
+      });
+      expect(withDomain).toContain("subdomain");
+
+      const withoutDomain = getMissingFields({
+        deploy: makeDeployConfig({ appDeployment: "netlify", cloudflareUse: false }),
+      });
+      expect(withoutDomain).not.toContain("subdomain");
+    });
+
+    it("should never require subdomain for gcp, even with cloudflareUse=true", () => {
+      const missing = getMissingFields({
+        deploy: makeDeployConfig({ appDeployment: "gcp", cloudflareUse: true }),
+      });
+      expect(missing).not.toContain("subdomain");
     });
 
     it("should return empty array when config is complete", () => {

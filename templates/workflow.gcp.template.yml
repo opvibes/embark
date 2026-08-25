@@ -10,8 +10,6 @@ __SUBMODULE_PATH__
 
 env:
   PACKAGE_PATH: packages/__PACKAGE_NAME__
-  SUBDOMAIN: __SUBDOMAIN__
-  DOMAIN: ${{ secrets.DOMAIN }}
   IMAGE_NAME: __PACKAGE_NAME_LOWERCASE__
 
 jobs:
@@ -100,37 +98,3 @@ jobs:
 
           echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
 
-  dns:
-    if: __CLOUDFLARE_IF__
-    needs: deploy
-    runs-on: ubuntu-latest
-    env:
-      SITE_URL: ${{ needs.deploy.outputs.service_url }}
-    steps:
-      - name: Get or Create subdomain on Cloudflare
-        run: |
-          HOSTNAME=$(echo $SITE_URL | sed -E 's|https?://||')
-
-          EXISTING=$(curl -s "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/dns_records?name=${SUBDOMAIN}.${DOMAIN}" \
-            -H "Authorization: Bearer ${{ secrets.CF_TOKEN }}")
-
-          RECORD_ID=$(echo "$EXISTING" | jq -r '.result[0].id // empty')
-
-          if [ -n "$RECORD_ID" ] && [ "$RECORD_ID" != "null" ]; then
-            echo "✓ DNS record already exists"
-          else
-            echo "Creating DNS record..."
-
-            RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/dns_records" \
-              -H "Authorization: Bearer ${{ secrets.CF_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              --data "{
-                \"type\": \"CNAME\",
-                \"name\": \"${SUBDOMAIN}\",
-                \"content\": \"${HOSTNAME}\",
-                \"ttl\": 120,
-                \"proxied\": true
-              }")
-
-            echo "$RESPONSE"
-          fi

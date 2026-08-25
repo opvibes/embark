@@ -3,12 +3,19 @@ import { writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import * as readline from "node:readline";
-import * as fs from "node:fs";
-import * as tty from "node:tty";
-import { hasEmbarkConfig, readEmbarkConfig, getMissingFields, isConfigComplete, findRootDomainPackage, getPackagesWithoutConfig, getPackagesWithIncompleteConfig, validateSubdomain, assessRootDomainEligibility } from "./embark-config";
+import { hasEmbarkConfig, readEmbarkConfig, getMissingFields, isConfigComplete, findRootDomainPackage, getPackagesWithoutConfig, getPackagesWithIncompleteConfig, validateSubdomain, assessRootDomainEligibility, requiresSubdomain } from "./embark-config";
 import type { AppDeployment, DeployConfig, EmbarkConfig, PackageConfigStatus, RootDomainState } from "./embark-config";
 import { processPackageDockerfile } from "./generate-dockerfiles";
+import {
+  COLOR,
+  CURSOR,
+  askRequiredField,
+  askTextInput,
+  askYesNo,
+  menuSelect,
+  tryInitTty,
+  write,
+} from "./cli-ui";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -23,177 +30,6 @@ interface AiCli {
 interface AiCommand {
   bin: string;
   args: string[];
-}
-
-// ── ANSI colors ────────────────────────────────────────────
-const COLOR = {
-  reset: "\x1b[0m",
-  dim: "\x1b[2m",
-  bold: "\x1b[1m",
-  cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  gray: "\x1b[90m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  magenta: "\x1b[35m",
-  red: "\x1b[31m",
-} as const;
-
-// ── ANSI cursor ────────────────────────────────────────────
-const CURSOR = {
-  hide: "\x1b[?25l",
-  show: "\x1b[?25h",
-  clearLine: "\x1b[2K\r",
-  moveUp: "\x1b[1A",
-} as const;
-
-let TTY_IN: tty.ReadStream | null = null;
-let TTY_OUT: fs.WriteStream | null = null;
-
-function tryInitTty() {
-  if (TTY_IN && TTY_OUT) return;
-  try {
-    const fd = fs.openSync("/dev/tty", "r+");
-    const inStream = new tty.ReadStream(fd);
-    const outStream = fs.createWriteStream(null as any, { fd });
-    TTY_IN = inStream;
-    TTY_OUT = outStream;
-  } catch {
-    // TTY not available (e.g., in CI or some hook environments)
-  }
-}
-
-function write(text: string) {
-  process.stdout.write(text);
-}
-
-async function readKey(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // Prefer using the process stdin when it's a TTY
-    if (typeof process.stdin.setRawMode === "function" && process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-      process.stdin.resume();
-      process.stdin.once("data", (data) => {
-        try {
-          process.stdin.setRawMode(false);
-        } catch {}
-        process.stdin.pause();
-        resolve(data.toString());
-      });
-    } else {
-      reject(new Error("TTY not available"));
-    }
-  });
-}
-
-function renderMenu(
-  title: string,
-  options: string[],
-  index: number,
-  totalLines: number,
-  optionColors?: string[],
-) {
-  for (let i = 0; i < totalLines; i++) {
-    write(CURSOR.moveUp + CURSOR.clearLine);
-  }
-  write(`  ${title}\n`);
-  write(`  ${COLOR.dim}↑/↓ navigate  │  Enter select  │  q cancel${COLOR.reset}\n`);
-  write(`\n`);
-
-  for (let i = 0; i < options.length; i++) {
-    const activeColor = optionColors?.[i] ?? COLOR.cyan;
-    if (i === index) {
-      write(`  ${activeColor}${COLOR.bold}❯ ${options[i]}${COLOR.reset}\n`);
-    } else {
-      write(`  ${COLOR.gray}  ${options[i]}${COLOR.reset}\n`);
-    }
-  }
-}
-
-async function menuSelect(title: string, options: string[], optionColors?: string[]): Promise<number> {
-  // If raw mode isn't available (e.g., non-TTY or some CI/hook environments),
-  // fall back to a numbered prompt using readline.
-  if (typeof process.stdin.setRawMode !== "function" || !process.stdin.isTTY) {
-    write(`${title}\n`);
-    for (let i = 0; i < options.length; i++) {
-      write(`  ${i + 1}. ${options[i]}\n`);
-    }
-    write(`\n`);
-
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    return new Promise((resolve) => {
-      rl.question(`Choose [1-${options.length}] (default 1): `, (answer) => {
-        rl.close();
-        const n = parseInt(answer.trim(), 10);
-        if (Number.isFinite(n) && n >= 1 && n <= options.length) {
-          resolve(n - 1);
-        } else {
-          resolve(0);
-        }
-      });
-    });
-  }
-
-  const totalLines = options.length + 3;
-
-  write(CURSOR.hide);
-  write(`  ${title}\n`);
-  write(`  ${COLOR.dim}↑/↓ navigate  │  Enter select  │  q cancel${COLOR.reset}\n`);
-  write(`\n`);
-
-  let index = 0;
-
-  for (let i = 0; i < options.length; i++) {
-    const activeColor = optionColors?.[i] ?? COLOR.cyan;
-    if (i === index) {
-      write(`  ${activeColor}${COLOR.bold}❯ ${options[i]}${COLOR.reset}\n`);
-    } else {
-      write(`  ${COLOR.gray}  ${options[i]}${COLOR.reset}\n`);
-    }
-  }
-
-  while (true) {
-    let key: string;
-    try {
-      key = await readKey();
-    } catch (err) {
-      // If raw mode failed mid-loop, fall back to numeric prompt
-      write(CURSOR.show);
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      return new Promise((resolve) => {
-        rl.question(`Choose [1-${options.length}] (default 1): `, (answer) => {
-          rl.close();
-          const n = parseInt(answer.trim(), 10);
-          if (Number.isFinite(n) && n >= 1 && n <= options.length) {
-            resolve(n - 1);
-          } else {
-            resolve(0);
-          }
-        });
-      });
-    }
-
-    if (key === "\x1b[A") {
-      index = (index - 1 + options.length) % options.length;
-    } else if (key === "\x1b[B") {
-      index = (index + 1) % options.length;
-    } else if (key === "\r" || key === "\n") {
-      write(CURSOR.show);
-      return index;
-    } else if (key === "q" || key === "\x03") {
-      write(CURSOR.show);
-      return 0; // Default to first option on cancel
-    } else {
-      continue;
-    }
-
-    renderMenu(title, options, index, totalLines, optionColors);
-  }
-}
-
-async function askYesNo(question: string): Promise<boolean> {
-  const selected = await menuSelect(`${question}`, ["Yes", "No"]);
-  return selected === 0;
 }
 
 async function askDockerfileMethod(): Promise<"ai" | "default" | null> {
@@ -376,7 +212,6 @@ function printRequiredSecrets(appDeployment: AppDeployment, cloudflareUse: boole
     write(`  ${COLOR.cyan}GCP_PROJECT_ID${COLOR.reset}   ${COLOR.dim}Google Cloud project ID${COLOR.reset}\n`);
     write(`  ${COLOR.cyan}GCP_SA_KEY${COLOR.reset}       ${COLOR.dim}Service account JSON with deploy permissions${COLOR.reset}\n`);
     write(`  ${COLOR.cyan}GCP_REGION${COLOR.reset}       ${COLOR.dim}Cloud Run region (e.g. us-central1)${COLOR.reset}\n`);
-    write(`  ${COLOR.cyan}DOMAIN${COLOR.reset}           ${COLOR.dim}Base domain (e.g. embark.dev)${COLOR.reset}\n`);
   } else if (appDeployment === "netlify") {
     write(`  ${COLOR.cyan}NETLIFY_TOKEN${COLOR.reset}    ${COLOR.dim}Netlify personal access token${COLOR.reset}\n`);
     write(`  ${COLOR.cyan}DOMAIN${COLOR.reset}           ${COLOR.dim}Base domain (e.g. embark.dev)${COLOR.reset}\n`);
@@ -394,8 +229,9 @@ function printRequiredSecrets(appDeployment: AppDeployment, cloudflareUse: boole
     }
   }
 
-  // Cloudflare DNS secrets (only for gcp/netlify, cloudflare-pages has its own secrets above)
-  if (cloudflareUse && (appDeployment === "gcp" || appDeployment === "netlify")) {
+  // Cloudflare DNS secrets (netlify only — gcp does not manage custom DNS and
+  // cloudflare-pages has its own secrets above)
+  if (cloudflareUse && appDeployment === "netlify") {
     write(`\n  ${COLOR.magenta}+ Cloudflare DNS (cloudflareUse: true):${COLOR.reset}\n`);
     write(`  ${COLOR.cyan}CF_TOKEN${COLOR.reset}         ${COLOR.dim}Cloudflare API token (DNS edit permissions)${COLOR.reset}\n`);
     write(`  ${COLOR.cyan}CF_ZONE_ID${COLOR.reset}       ${COLOR.dim}Zone ID of your domain in Cloudflare${COLOR.reset}\n`);
@@ -410,45 +246,6 @@ function buildNetlifyToml(publishDir: string): string {
   return `[build]
   publish = "${publishDir}"
 `;
-}
-
-async function askTextInput(prompt: string): Promise<string> {
-  if (typeof process.stdin.setRawMode !== "function" || !process.stdin.isTTY) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    return new Promise((resolve) => {
-      rl.question(prompt, (answer) => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    });
-  }
-
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-async function askRequiredField(fieldName: string, label: string, defaultValue?: string): Promise<string> {
-  let value = "";
-  const defaultHint = defaultValue ? ` [default: ${defaultValue}]` : "";
-
-  while (!value) {
-    value = await askTextInput(`  ${label}${defaultHint}: `);
-
-    if (!value && defaultValue) {
-      value = defaultValue;
-    }
-
-    if (!value) {
-      write(`  ${COLOR.yellow}⚠${COLOR.reset} ${fieldName} is required\n`);
-    }
-  }
-
-  return value;
 }
 
 async function askSubdomainField(defaultValue?: string): Promise<string> {
@@ -589,7 +386,13 @@ async function collectMissingFields(
         );
 
         let cloudflareUse = false;
-        if (appDeployment === "cloudflare-pages") {
+        if (appDeployment === "gcp") {
+          // GCP is served at its generated Cloud Run URL. Its flow is
+          // Dockerfile → workflow → Cloud Run deploy; it never manages custom
+          // DNS, so no domain question is asked and cloudflareUse stays false.
+          write(`\n${COLOR.bold}${COLOR.blue}? Google Cloud Run${COLOR.reset}\n`);
+          write(`  ${COLOR.dim}Served at its Cloud Run URL — no custom domain setup.${COLOR.reset}\n`);
+        } else if (appDeployment === "cloudflare-pages") {
           // Ask if the user wants to connect a custom domain
           write(`\n${COLOR.bold}${COLOR.blue}? Custom Domain${COLOR.reset}\n`);
           write(`  ${COLOR.dim}Your app will be live at project.pages.dev — connect a custom domain too?${COLOR.reset}\n`);
@@ -616,6 +419,14 @@ async function collectMissingFields(
         break;
       }
       case "subdomain": {
+        // The deploy target is collected before this field (see
+        // REQUIRED_EMBARK_FIELDS order), so by now we know whether a custom
+        // domain is in play at all. Targets that do not manage one — GCP, or
+        // anything answered without a custom domain — skip this entirely.
+        if (!requiresSubdomain(config)) {
+          delete config.subdomain;
+          break;
+        }
         // Ask about root domain FIRST — if root domain is selected, subdomain is not needed
         const useRootDomain = await askAboutRootDomain(packageName, rootDomainState);
         config.rootDomain = useRootDomain;
@@ -631,7 +442,7 @@ async function collectMissingFields(
       case "useSubmodule": {
         write(`\n${COLOR.bold}${COLOR.blue}? Git Submodules${COLOR.reset}\n`);
         write(`  ${COLOR.dim}Does this package use Git submodules?${COLOR.reset}\n`);
-        config.useSubmodule = await askYesNo("Does this package use a Git submodule?");
+        config.useSubmodule = await askYesNo("Does this package use a Git submodule?", false);
         break;
       }
     }
@@ -740,7 +551,7 @@ ${JSON.stringify(completeConfig, null, 2)}
       }
     }
 
-    // Handle GCP target
+    // Handle GCP target — Docker image, workflow, Cloud Run deploy. Nothing else.
     if (appDeployment === "gcp") {
       write(`\n${COLOR.bold}${COLOR.yellow}↳ Google Cloud Run Configuration${COLOR.reset}\n`);
 
@@ -750,20 +561,17 @@ ${JSON.stringify(completeConfig, null, 2)}
         write(`  ${COLOR.dim}ℹ${COLOR.reset} No workflow will be auto-generated.\n`);
       }
 
-      if (completeConfig.deploy.cloudflareUse) {
-        write(`  ${COLOR.dim}ℹ${COLOR.reset} Cloudflare DNS steps will be included in the workflow\n`);
-      }
+      write(`  ${COLOR.dim}ℹ${COLOR.reset} Served at its Cloud Run URL — no custom domain is configured\n`);
 
-      const wantsDocker = await askYesNo("\n  Generate a Dockerfile? (recommended for Cloud Run)");
-      if (wantsDocker) {
-        const method = await askDockerfileMethod();
-        if (method === "default") {
-          const created = await processPackageDockerfile(pkg.name, packageDir);
-          if (created) write(`  ${COLOR.green}✓${COLOR.reset} Default Dockerfile generated\n`);
-        } else if (method === "ai") {
-          const aiProvider = await askAiProvider();
-          await generateDockerfileWithAi(packageDir, pkg.name, aiProvider);
-        }
+      // Cloud Run deploys a container, so the Dockerfile is not optional here.
+      // The only choice is how to write it.
+      const method = await askDockerfileMethod();
+      if (method === "ai") {
+        const aiProvider = await askAiProvider();
+        await generateDockerfileWithAi(packageDir, pkg.name, aiProvider);
+      } else {
+        const created = await processPackageDockerfile(pkg.name, packageDir);
+        if (created) write(`  ${COLOR.green}✓${COLOR.reset} Default Dockerfile generated\n`);
       }
     }
 
