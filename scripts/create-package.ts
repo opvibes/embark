@@ -1,10 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import type { AppDeployment, DeployConfig, EmbarkConfig } from "./embark-config";
 import { findRootDomainPackage, readEmbarkConfig } from "./embark-config";
 import {
   COLOR,
+  askRequiredField,
   askValidatedField,
   askYesNo,
   hint,
@@ -48,6 +49,134 @@ function buildNetlifyToml(publishDir: string): string {
   return `[build]
   publish = "${publishDir}"
 `;
+}
+
+export function buildSubmoduleAddCommand(url: string, relativePath: string): string {
+  return `git submodule add ${url} ${relativePath}`;
+}
+
+function isExecError(error: unknown): error is { stderr: Buffer | string } {
+  return typeof error === "object" && error !== null && "stderr" in error;
+}
+
+/**
+ * Registers `relativePath` as a real Git submodule pointing at `url`, run from `cwd`.
+ * On failure it best-effort cleans up any partial state a failed `git submodule add`
+ * can leave behind (a `.gitmodules` entry and/or an empty directory) so the caller
+ * never has to reason about a half-wired package.
+ */
+export async function addGitSubmodule(url: string, relativePath: string, cwd: string): Promise<void> {
+  const command = buildSubmoduleAddCommand(url, relativePath);
+  // env is passed explicitly (not inherited implicitly) so a caller that sets
+  // GIT_ALLOW_PROTOCOL/GIT_CONFIG_* at runtime (e.g. tests using local repos) is honored.
+  const env = process.env;
+  try {
+    execSync(command, { cwd, stdio: "pipe", env });
+  } catch (error) {
+    const stderr = isExecError(error) ? error.stderr.toString().trim() : "";
+    const message = stderr || (error instanceof Error ? error.message : String(error));
+
+    try {
+      execSync(`git rm -f ${relativePath}`, { cwd, stdio: "pipe", env });
+    } catch {
+      // nothing was staged yet (e.g. clone failed before registration) — ignore
+    }
+    try {
+      execSync(`git submodule deinit -f ${relativePath}`, { cwd, stdio: "pipe", env });
+    } catch {
+      // submodule was never initialized — ignore
+    }
+    await rm(join(cwd, relativePath), { recursive: true, force: true });
+
+    throw new Error(
+      `Failed to run \`${command}\`:\n${message}\n\nRun it manually once the URL is reachable: ${command}`,
+    );
+  }
+}
+
+export interface PackageCreationInput {
+  camelCaseName: string;
+  title: string;
+  description: string;
+  rootDomain: boolean;
+  subdomain: string;
+  appDeployment: AppDeployment;
+  workflowGen: boolean;
+  cloudflareUse: boolean;
+  useSubmodule: boolean;
+  submoduleUrl: string;
+}
+
+export interface PackageCreationResult {
+  packageDir: string;
+  wiredAsSubmodule: boolean;
+}
+
+/**
+ * Performs the actual filesystem/Git side effects of package creation, given
+ * already-collected answers. Kept separate from the interactive prompting in
+ * `createPackage` so the "yes"/"no" submodule branches can be exercised directly
+ * in tests without driving the terminal UI.
+ */
+export async function createPackageFiles(
+  input: PackageCreationInput,
+  packagesDir: string,
+  repoRoot: string,
+): Promise<PackageCreationResult> {
+  const packageDir = join(packagesDir, input.camelCaseName);
+  const srcDir = join(packageDir, "src");
+
+  const deployConfig: DeployConfig = {
+    appDeployment: input.appDeployment,
+    cloudflareUse: input.cloudflareUse,
+    workflowGen: input.workflowGen,
+  };
+
+  const embarkConfig: EmbarkConfig = {
+    deploy: deployConfig,
+    name: input.camelCaseName,
+    title: input.title,
+    ...(input.rootDomain ? { rootDomain: true } : {}),
+    ...(input.subdomain ? { subdomain: input.subdomain } : {}),
+    description: input.description,
+    useSubmodule: input.useSubmodule,
+  };
+
+  if (input.useSubmodule) {
+    const relativePath = `packages/${input.camelCaseName}`;
+
+    // The submodule's content belongs to its own repo — only the Embark
+    // control file is written here, never the scaffold (src/index.ts,
+    // package.json, tsconfig.json, netlify.toml).
+    await addGitSubmodule(input.submoduleUrl, relativePath, repoRoot);
+    ok(`Registered Git submodule: ${relativePath}`);
+
+    await writeEmbarkConfig(packageDir, embarkConfig);
+
+    return { packageDir, wiredAsSubmodule: true };
+  }
+
+  await mkdir(packageDir, { recursive: true });
+  await mkdir(srcDir, { recursive: true });
+  ok(`Created directory: packages/${input.camelCaseName}`);
+
+  await createBaseFiles(input.camelCaseName, packageDir, srcDir, input.title, input.subdomain, input.description);
+
+  if (input.appDeployment === "netlify") {
+    const netlifyToml = buildNetlifyToml("dist");
+    await writeFile(join(packageDir, "netlify.toml"), netlifyToml);
+    ok("Created: netlify.toml");
+  }
+
+  await writeEmbarkConfig(packageDir, embarkConfig);
+
+  try {
+    execSync(`git add packages/${input.camelCaseName}/`, { cwd: repoRoot, stdio: "ignore" });
+  } catch {
+    warnLine("Could not add to git automatically");
+  }
+
+  return { packageDir, wiredAsSubmodule: false };
 }
 
 /**
@@ -242,12 +371,12 @@ async function createPackage() {
   // Ask about Git submodules
   section("Git Submodules");
   const useSubmodule = await askYesNo("🔗 Does this package use Git submodules?", false);
+  let submoduleUrl = "";
   if (useSubmodule) {
-    ok("Workflow will include submodules: recursive in the checkout step.");
+    submoduleUrl = await askRequiredField("Submodule URL", "🔗 Submodule Git URL");
   }
 
   const packageDir = join(PACKAGES_DIR, camelCaseName);
-  const srcDir = join(packageDir, "src");
 
   write(`\n${COLOR.bold}${COLOR.cyan}🚀 Creating package: ${camelCaseName}${COLOR.reset}\n`);
   summaryLine("Title", title);
@@ -262,41 +391,35 @@ async function createPackage() {
   );
   summaryLine("Workflow", workflowGen ? "auto-generate" : "manual");
   summaryLine("Cloudflare", cloudflareUse ? "yes" : "no");
+  summaryLine("Submodule", useSubmodule ? submoduleUrl : "no");
   write(`\n`);
 
   try {
-    await mkdir(packageDir, { recursive: true });
-    await mkdir(srcDir, { recursive: true });
-    ok(`Created directory: packages/${camelCaseName}`);
+    const { wiredAsSubmodule } = await createPackageFiles(
+      {
+        camelCaseName,
+        title,
+        description,
+        rootDomain,
+        subdomain,
+        appDeployment,
+        workflowGen,
+        cloudflareUse,
+        useSubmodule,
+        submoduleUrl,
+      },
+      PACKAGES_DIR,
+      ROOT,
+    );
 
-    await createBaseFiles(camelCaseName, packageDir, srcDir, title, subdomain, description);
-
-    if (appDeployment === "netlify") {
-      const netlifyToml = buildNetlifyToml("dist");
-      await writeFile(join(packageDir, "netlify.toml"), netlifyToml);
-      ok("Created: netlify.toml");
-    }
-
-    const deployConfig: DeployConfig = {
-      appDeployment,
-      cloudflareUse,
-      workflowGen,
-    };
-
-    await writeEmbarkConfig(packageDir, {
-      deploy: deployConfig,
-      name: camelCaseName,
-      title,
-      ...(rootDomain ? { rootDomain: true } : {}),
-      ...(subdomain ? { subdomain } : {}),
-      description,
-      useSubmodule,
-    });
-
-    try {
-      execSync(`git add packages/${camelCaseName}/`, { cwd: ROOT, stdio: "ignore" });
-    } catch {
-      warnLine("Could not add to git automatically");
+    if (wiredAsSubmodule) {
+      write(`\n${COLOR.green}${COLOR.bold}✅ Submodule package registered successfully!${COLOR.reset}\n`);
+      write(`\n${COLOR.bold}Next steps:${COLOR.reset}\n`);
+      write(`  ${COLOR.dim}1.${COLOR.reset} cd packages/${camelCaseName} && commit/push .embark.jsonc in the submodule's own repo\n`);
+      write(`  ${COLOR.dim}2.${COLOR.reset} Back in this repo, commit the submodule pointer: git add .gitmodules packages/${camelCaseName}\n`);
+      write(`  ${COLOR.dim}3.${COLOR.reset} Run: bun install\n`);
+      write(`\n`);
+      return;
     }
 
     write(`\n${COLOR.green}${COLOR.bold}✅ Package created successfully!${COLOR.reset}\n`);
@@ -314,7 +437,7 @@ async function createPackage() {
     }
     write(`\n`);
   } catch (error) {
-    write(`\n${COLOR.red}❌ Error creating package:${COLOR.reset} ${String(error)}\n`);
+    write(`\n${COLOR.red}❌ Error creating package:${COLOR.reset} ${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);
   }
 }
