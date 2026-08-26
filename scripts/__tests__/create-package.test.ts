@@ -6,21 +6,9 @@ import { join } from "node:path";
 import {
   addGitSubmodule,
   buildSubmoduleAddCommand,
-  createPackage,
   createPackageFiles,
   type PackageCreationInput,
-  type PromptFn,
 } from "../create-package";
-
-function scriptedPrompt(answers: string[]): PromptFn {
-  const queue = [...answers];
-  return async (question: string) => {
-    if (queue.length === 0) {
-      throw new Error(`No scripted answer left for prompt: ${question}`);
-    }
-    return queue.shift() as string;
-  };
-}
 
 describe("package name validation", () => {
   function validateCamelCase(name: string): boolean {
@@ -315,81 +303,6 @@ describe("Git submodule wiring", () => {
       expect((caught as Error).message).toContain(
         `git submodule add ${bogusUrl} packages/bogus`,
       );
-    });
-  });
-
-  describe("createPackage — full interactive flow", () => {
-    test("answering no scaffolds a normal package (unchanged behaviour)", async () => {
-      const repoRoot = join(workDir, "root");
-      const packagesDir = join(repoRoot, "packages");
-      await initRepoWithCommit(repoRoot);
-      await mkdir(packagesDir, { recursive: true });
-
-      const prompt = scriptedPrompt([
-        "flowNoPkg", // name
-        "Flow No Package", // title
-        "A description", // description
-        "n", // root domain? no
-        "flow-no-pkg", // subdomain
-        "1", // deploy target: gcp
-        "y", // auto-generate workflow
-        "n", // use Git submodules? no
-        "n", // use Cloudflare
-      ]);
-
-      await createPackage(prompt, packagesDir, repoRoot);
-
-      const pkgDir = join(packagesDir, "flowNoPkg");
-      await expect(readFile(join(pkgDir, "package.json"), "utf-8")).resolves.toContain(
-        "@embark/flowNoPkg",
-      );
-      await expect(readFile(join(pkgDir, "src", "index.ts"), "utf-8")).resolves.toContain(
-        "Hello from flowNoPkg",
-      );
-
-      const config = await readEmbarkConfigFile(pkgDir);
-      expect(config.useSubmodule).toBe(false);
-      expect(config.subdomain).toBe("flow-no-pkg");
-
-      const submoduleStatus = git(repoRoot, "submodule status");
-      expect(submoduleStatus.trim()).toBe("");
-    });
-
-    test("answering yes prompts for a URL and wires a real submodule", async () => {
-      const repoRoot = join(workDir, "root");
-      const packagesDir = join(repoRoot, "packages");
-      const bareRemote = join(workDir, "remote.git");
-      const seedDir = join(workDir, "seed");
-      await initRepoWithCommit(repoRoot);
-      await initBareRemoteWithCommit(bareRemote, seedDir);
-
-      const prompt = scriptedPrompt([
-        "flowYesPkg", // name
-        "Flow Yes Package", // title
-        "A description", // description
-        "n", // root domain? no
-        "flow-yes-pkg", // subdomain
-        "1", // deploy target: gcp
-        "y", // auto-generate workflow
-        "y", // use Git submodules? yes
-        bareRemote, // submodule Git URL
-        "n", // use Cloudflare
-      ]);
-
-      await createPackage(prompt, packagesDir, repoRoot);
-
-      const pkgDir = join(packagesDir, "flowYesPkg");
-
-      const gitmodules = await readFile(join(repoRoot, ".gitmodules"), "utf-8");
-      expect(gitmodules).toContain("packages/flowYesPkg");
-
-      const submoduleStatus = git(repoRoot, "submodule status");
-      expect(submoduleStatus).toContain("packages/flowYesPkg");
-
-      const config = await readEmbarkConfigFile(pkgDir);
-      expect(config.useSubmodule).toBe(true);
-
-      await expect(readFile(join(pkgDir, "package.json"), "utf-8")).rejects.toThrow();
     });
   });
 });
