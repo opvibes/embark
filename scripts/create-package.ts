@@ -59,6 +59,54 @@ function isExecError(error: unknown): error is { stderr: Buffer | string } {
   return typeof error === "object" && error !== null && "stderr" in error;
 }
 
+/** Matches a GitHub remote (github.com, over https or ssh) so the auth hint below only fires there. */
+export function isGitHubUrl(url: string): boolean {
+  return /(^|[@/.])github\.com([/:]|$)/i.test(url);
+}
+
+// Git's own wording for "no credentials" / "no access" failures. GitHub returns the
+// same "not found" response for a repo that truly doesn't exist AND for one the
+// caller isn't authenticated for, so that signature is treated as an auth failure too.
+const AUTH_FAILURE_PATTERNS = [
+  /authentication failed/i,
+  /could not read username/i,
+  /\b403\b/,
+  /repository not found/i,
+];
+
+function looksLikeAuthFailure(message: string): boolean {
+  return AUTH_FAILURE_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+/**
+ * Turns a raw `git submodule add` failure into something a human can act on.
+ * Left untouched (raw stderr + manual command) unless the message matches a
+ * known credential/permission signature — see `AUTH_FAILURE_PATTERNS`.
+ */
+export function describeSubmoduleFailure(url: string, command: string, rawMessage: string): string {
+  if (!looksLikeAuthFailure(rawMessage)) {
+    return `Failed to run \`${command}\`:\n${rawMessage}\n\nRun it manually once the URL is reachable: ${command}`;
+  }
+
+  const hint = isGitHubUrl(url)
+    ? [
+        "This looks like a missing-credential failure, not a broken URL: GitHub returns the same",
+        "\"not found\" response both for a repo that truly doesn't exist and for a private repo/org",
+        "you aren't authenticated for.",
+        "",
+        "Fix: set GITHUB_TOKEN in your environment (a GitHub fine-grained Personal Access Token",
+        "with \"Contents: Read\" on this repo/org), then re-run.",
+        "Full step-by-step, including the org-approval step private orgs may require:",
+        "docs/github-secrets.md → \"Token for private submodules\".",
+      ].join("\n")
+    : [
+        "This looks like a missing-credential failure: the remote requires authentication",
+        "that Git doesn't currently have configured (a token, an SSH key, or a credential helper).",
+      ].join("\n");
+
+  return `Failed to run \`${command}\`:\n${rawMessage}\n\n${hint}\n\nOnce configured, run it manually: ${command}`;
+}
+
 /**
  * Registers `relativePath` as a real Git submodule pointing at `url`, run from `cwd`.
  * On failure it best-effort cleans up any partial state a failed `git submodule add`
@@ -88,9 +136,7 @@ export async function addGitSubmodule(url: string, relativePath: string, cwd: st
     }
     await rm(join(cwd, relativePath), { recursive: true, force: true });
 
-    throw new Error(
-      `Failed to run \`${command}\`:\n${message}\n\nRun it manually once the URL is reachable: ${command}`,
-    );
+    throw new Error(describeSubmoduleFailure(url, command, message));
   }
 }
 
@@ -374,6 +420,15 @@ async function createPackage() {
   let submoduleUrl = "";
   if (useSubmodule) {
     submoduleUrl = await askRequiredField("Submodule URL", "🔗 Submodule Git URL");
+
+    if (isGitHubUrl(submoduleUrl)) {
+      write(`\n`);
+      warnLine("If this repository is private (or belongs to an organization), `git submodule add` needs authentication.");
+      hint("Set GITHUB_TOKEN in your environment before continuing — see docs/github-secrets.md (\"Token for private submodules\").");
+      write(`\n`);
+      warnLine("Se este repositório for privado (ou pertence a uma organização), o `git submodule add` precisa de autenticação.");
+      hint("Configure GITHUB_TOKEN no ambiente antes de continuar — veja docs/github-secrets.md (\"Token for private submodules\").");
+    }
   }
 
   const packageDir = join(PACKAGES_DIR, camelCaseName);

@@ -50,7 +50,7 @@ const commands: Command[] = [
 function printBanner(): void {
   const line = "═".repeat(42);
   console.log(`\n${cyan}${bold}  ╔${line}╗${reset}`);
-  console.log(`${cyan}${bold}  ║${" ".repeat(14)}embark  utils${" ".repeat(15)}║${reset}`);
+  console.log(`${cyan}${bold}  ║${" ".repeat(14)}embark  start${" ".repeat(15)}║${reset}`);
   console.log(`${cyan}${bold}  ╚${line}╝${reset}\n`);
 }
 
