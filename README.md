@@ -326,13 +326,13 @@ embark/
 
 | Script | Command | Description |
 |--------|---------|-------------|
-| `utils` | `bun run utils` | Unified interactive CLI — access all developer tools from one menu |
+| `start` | `bun start` | Unified interactive CLI — access all developer tools from one menu |
 | `setup` | `bun run setup` | Setup repo for personal use (configure releases, upstream remote) |
 | `test` | `bun run test` | Run script tests with coverage |
 
-### Utils CLI Commands
+### `bun start` Commands
 
-Run `bun run utils` and navigate the menu to access:
+Run `bun start` and navigate the menu to access:
 
 | Command | Description |
 |---------|-------------|

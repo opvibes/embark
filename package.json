@@ -10,7 +10,7 @@
     "prepare": "husky",
     "postinstall": "husky",
     "test": "bun test --coverage scripts/__tests__",
-    "utils": "bun scripts/utils.ts",
+    "start": "bun scripts/utils.ts",
     "setup": "bun scripts/setup.ts"
   },
   "devDependencies": {
