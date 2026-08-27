@@ -7,6 +7,8 @@ import {
   addGitSubmodule,
   buildSubmoduleAddCommand,
   createPackageFiles,
+  describeSubmoduleFailure,
+  isGitHubUrl,
   type PackageCreationInput,
 } from "../create-package";
 
@@ -304,5 +306,62 @@ describe("Git submodule wiring", () => {
         `git submodule add ${bogusUrl} packages/bogus`,
       );
     });
+  });
+});
+
+describe("isGitHubUrl", () => {
+  test("recognizes GitHub HTTPS and SSH remotes", () => {
+    expect(isGitHubUrl("https://github.com/opvibes/embark.git")).toBe(true);
+    expect(isGitHubUrl("git@github.com:opvibes/embark.git")).toBe(true);
+    expect(isGitHubUrl("ssh://git@github.com/opvibes/embark.git")).toBe(true);
+  });
+
+  test("rejects non-GitHub remotes and local paths", () => {
+    expect(isGitHubUrl("https://gitlab.com/org/repo.git")).toBe(false);
+    expect(isGitHubUrl("/home/user/repos/local-bare.git")).toBe(false);
+    expect(isGitHubUrl("git@bitbucket.org:org/repo.git")).toBe(false);
+  });
+});
+
+describe("describeSubmoduleFailure", () => {
+  const url = "https://github.com/opvibes/private-repo.git";
+  const command = buildSubmoduleAddCommand(url, "packages/privateRepo");
+
+  test("passes through a non-auth failure untranslated (happy-path failures unaffected)", () => {
+    const rawMessage = "fatal: destination path 'packages/privateRepo' already exists and is not an empty directory";
+
+    const described = describeSubmoduleFailure(url, command, rawMessage);
+
+    expect(described).toContain(rawMessage);
+    expect(described).toContain(command);
+    expect(described).not.toContain("GITHUB_TOKEN");
+  });
+
+  test.each([
+    "remote: Repository not found.\nfatal: repository 'https://github.com/opvibes/private-repo.git/' not found",
+    "fatal: Authentication failed for 'https://github.com/opvibes/private-repo.git/'",
+    "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+    "The requested URL returned error: 403",
+  ])("translates a GitHub auth-shaped failure into an actionable message: %s", (rawMessage) => {
+    const described = describeSubmoduleFailure(url, command, rawMessage);
+
+    // the raw git output is still there — never swallowed
+    expect(described).toContain(rawMessage);
+    // but it now says what to do about it
+    expect(described).toContain("GITHUB_TOKEN");
+    expect(described).toContain("docs/github-secrets.md");
+    expect(described).toContain(command);
+  });
+
+  test("gives a generic credential hint (no GITHUB_TOKEN) for a non-GitHub host", () => {
+    const nonGitHubUrl = "https://gitlab.com/org/private-repo.git";
+    const nonGitHubCommand = buildSubmoduleAddCommand(nonGitHubUrl, "packages/privateRepo");
+    const rawMessage = "fatal: Authentication failed for 'https://gitlab.com/org/private-repo.git/'";
+
+    const described = describeSubmoduleFailure(nonGitHubUrl, nonGitHubCommand, rawMessage);
+
+    expect(described).toContain(rawMessage);
+    expect(described).toContain("credential");
+    expect(described).not.toContain("GITHUB_TOKEN");
   });
 });
