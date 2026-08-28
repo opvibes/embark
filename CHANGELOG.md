@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.1](https://github.com/opvibes/embark/compare/v1.5.0...v1.5.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **coverage:** repo para de mentir sobre o piso de cobertura ([#14](https://github.com/opvibes/embark/issues/14)) ([01265bb](https://github.com/opvibes/embark/commit/01265bb3999028a427e26f29af7414d440ba7e78))
+* **create-package:** avisa e traduz falha de auth em submódulo GitHub privado ([#13](https://github.com/opvibes/embark/issues/13)) ([af3fcec](https://github.com/opvibes/embark/commit/af3fcec8b03ba880e7a2922e812f7d211daeceb5))
+* **create-package:** concretiza o wiring de Git submodule ao responder yes ([7c3662a](https://github.com/opvibes/embark/commit/7c3662a17c8878cf2c99b37aad320c40292e7d4a))
+* **create-package:** concretiza o wiring de Git submodule ao responder yes ([f98f247](https://github.com/opvibes/embark/commit/f98f24723eb734210feceb4115ae961260de441c))
+* **git:** isola subprocessos git de GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE herdados ([#15](https://github.com/opvibes/embark/issues/15)) ([af2b190](https://github.com/opvibes/embark/commit/af2b190bd0b72222ef59ae8a611addd67eeeba3e))
+
 ## [1.5.0](https://github.com/opvibes/embark/compare/v1.4.0...v1.5.0) (2026-08-25)
 
 
