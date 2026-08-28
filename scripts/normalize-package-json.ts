@@ -2,6 +2,7 @@ import { readFile, writeFile, access, readdir } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { readEmbarkConfig, hasCompleteEmbarkConfig } from "./embark-config";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -83,7 +84,7 @@ export async function normalizeAllPackages(
 
   if (hasChanges) {
     try {
-      execSync("git add packages/*/package.json", { cwd: root, stdio: "ignore" });
+      execSync("git add packages/*/package.json", { cwd: root, stdio: "ignore", env: gitEnv() });
     } catch {
       // May fail in test environments without git
     }

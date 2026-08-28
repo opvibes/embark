@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, access } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { isExternalDeploy, needsDockerfile } from "./embark-config";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -104,7 +105,7 @@ async function generateDockerfiles() {
   }
 
   if (hasChanges) {
-    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "inherit" });
+    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "inherit", env: gitEnv() });
   } else {
     console.log("[generate-dockerfiles] all Dockerfiles already exist, none created");
   }

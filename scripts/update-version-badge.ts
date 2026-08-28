@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const README_PATH = join(ROOT, "README.md");
@@ -54,7 +55,7 @@ async function updateVersionBadge() {
 
   if (result.hasChanged) {
     await writeFile(README_PATH, result.newContent, "utf-8");
-    execSync("git add README.md", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add README.md", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     console.log(`[update-version] badge updated to v${version}`);
   } else {
     console.log("[update-version] version badge is already up to date");

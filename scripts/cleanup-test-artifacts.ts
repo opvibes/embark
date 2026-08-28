@@ -2,6 +2,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { readdir, access } from "node:fs/promises";
 import { execSync } from "node:child_process";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -11,7 +12,7 @@ function getTrackedPackages(): Set<string> {
 
   try {
     // List direct subdirectories of packages/ committed in HEAD
-    const headOutput = execSync("git ls-tree --name-only HEAD packages/", { cwd: ROOT, encoding: "utf-8" });
+    const headOutput = execSync("git ls-tree --name-only HEAD packages/", { cwd: ROOT, encoding: "utf-8", env: gitEnv() });
     headOutput
       .split("\n")
       .map((line) => line.trim().replace(/^packages\//, ""))
@@ -26,6 +27,7 @@ function getTrackedPackages(): Set<string> {
     const indexOutput = execSync("git diff --name-only --cached --diff-filter=A -- packages/", {
       cwd: ROOT,
       encoding: "utf-8",
+      env: gitEnv(),
     });
     indexOutput
       .split("\n")

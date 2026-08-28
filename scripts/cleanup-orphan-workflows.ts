@@ -2,6 +2,7 @@ import { readdir, unlink, access } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { shouldGenerateWorkflow } from "./embark-config";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -75,7 +76,7 @@ export async function cleanOrphanWorkflows(
 
   if (hasChanges) {
     try {
-      execSync("git add .github/workflows/", { cwd: root, stdio: "inherit" });
+      execSync("git add .github/workflows/", { cwd: root, stdio: "inherit", env: gitEnv() });
     } catch {
       // May fail in test environments where cwd is not a git repo
     }

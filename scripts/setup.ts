@@ -4,6 +4,7 @@ import { join, basename } from "node:path";
 import * as readline from "node:readline";
 import * as fs from "node:fs";
 import * as tty from "node:tty";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const GIT_DIR = join(ROOT, ".git");
@@ -215,7 +216,7 @@ async function setup(): Promise<void> {
       write(`  ${COLOR.green}✓${COLOR.reset} Reset CHANGELOG.md\n`);
     }
     try {
-      execSync("git add .release-please-manifest.json release-please-config.json CHANGELOG.md package.json 2>/dev/null || true", { cwd: ROOT, stdio: "ignore" });
+      execSync("git add .release-please-manifest.json release-please-config.json CHANGELOG.md package.json 2>/dev/null || true", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     } catch {
       // ignore
     }
@@ -230,8 +231,8 @@ async function setup(): Promise<void> {
       }
     }
     try {
-      execSync("git rm --cached .release-please-manifest.json release-please-config.json .github/workflows/release.yml CHANGELOG.md 2>/dev/null || true", { cwd: ROOT, stdio: "ignore" });
-      execSync("git add -u", { cwd: ROOT, stdio: "ignore" });
+      execSync("git rm --cached .release-please-manifest.json release-please-config.json .github/workflows/release.yml CHANGELOG.md 2>/dev/null || true", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
+      execSync("git add -u", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     } catch {
       // ignore
     }
@@ -253,7 +254,7 @@ async function setup(): Promise<void> {
       await writeFile(gitattributesPath, attrContent.trimEnd() + "\n" + releaseAttrs, "utf-8");
       write(`  ${COLOR.green}✓${COLOR.reset} Added release files to .gitattributes ${COLOR.dim}(protected from upstream sync)${COLOR.reset}\n`);
       try {
-        execSync("git add .gitattributes", { cwd: ROOT, stdio: "ignore" });
+        execSync("git add .gitattributes", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
       } catch {
         // ignore
       }
@@ -264,15 +265,15 @@ async function setup(): Promise<void> {
   if (await exists(GIT_DIR)) {
     try {
       // Check if upstream already exists
-      const remotes = execSync("git remote", { cwd: ROOT }).toString().trim().split("\n");
+      const remotes = execSync("git remote", { cwd: ROOT, env: gitEnv() }).toString().trim().split("\n");
       if (!remotes.includes("upstream")) {
-        execSync("git remote add upstream https://github.com/opvibes/embark.git", { cwd: ROOT, stdio: "ignore" });
-        execSync("git remote set-url --push upstream DISABLED", { cwd: ROOT, stdio: "ignore" });
+        execSync("git remote add upstream https://github.com/opvibes/embark.git", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
+        execSync("git remote set-url --push upstream DISABLED", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
         write(`  ${COLOR.green}✓${COLOR.reset} Upstream remote configured ${COLOR.dim}(pull-only — push disabled)${COLOR.reset}\n`);
         write(`  ${COLOR.dim}→ git fetch upstream && git merge upstream/main${COLOR.reset}\n`);
         // Enable merge.ours driver for .gitattributes protection
         try {
-          execSync("git config merge.ours.driver true", { cwd: ROOT, stdio: "ignore" });
+          execSync("git config merge.ours.driver true", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
           write(`  ${COLOR.green}✓${COLOR.reset} merge.ours driver enabled ${COLOR.dim}(protects demo files during upstream sync)${COLOR.reset}\n`);
         } catch {
           // ignore
@@ -328,17 +329,17 @@ async function setup(): Promise<void> {
 
       // Initialize new git repo and configure husky
       write(`\n${COLOR.cyan}🔧 Initializing new git repository...${COLOR.reset}\n`);
-      execSync("git init", { cwd: ROOT, stdio: "inherit" });
+      execSync("git init", { cwd: ROOT, stdio: "inherit", env: gitEnv() });
       execSync("bun run prepare", { cwd: ROOT, stdio: "inherit" });
 
       // Configure upstream remote for the fresh repo
       try {
-        execSync("git remote add upstream https://github.com/opvibes/embark.git", { cwd: ROOT, stdio: "ignore" });
-        execSync("git remote set-url --push upstream DISABLED", { cwd: ROOT, stdio: "ignore" });
+        execSync("git remote add upstream https://github.com/opvibes/embark.git", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
+        execSync("git remote set-url --push upstream DISABLED", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
         write(`  ${COLOR.green}✓${COLOR.reset} Upstream remote configured ${COLOR.dim}(pull-only — push disabled)${COLOR.reset}\n`);
         // Enable merge.ours driver for .gitattributes protection
         try {
-          execSync("git config merge.ours.driver true", { cwd: ROOT, stdio: "ignore" });
+          execSync("git config merge.ours.driver true", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
           write(`  ${COLOR.green}✓${COLOR.reset} merge.ours driver enabled ${COLOR.dim}(protects demo files during upstream sync)${COLOR.reset}\n`);
         } catch {
           // ignore

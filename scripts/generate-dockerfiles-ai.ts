@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, access } from "node:fs/promises";
 import { execSync, spawn } from "node:child_process";
 import { join } from "node:path";
 import { needsDockerfile } from "./embark-config";
+import { gitEnv } from "./git-env";
 import * as readline from "node:readline";
 import * as fs from "node:fs";
 import * as tty from "node:tty";
@@ -536,7 +537,7 @@ async function main() {
     sp2.success(`No AI CLI found — generating default Dockerfiles`);
     write("\n");
     await generateDefaultDockerfiles(packagesWithoutDockerfile);
-    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     write("\n");
     return;
   }
@@ -554,7 +555,7 @@ async function main() {
   if (answer === null || answer === 1) {
     write("\n");
     await generateDefaultDockerfiles(packagesWithoutDockerfile);
-    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     write("\n");
     return;
   }
@@ -570,7 +571,7 @@ async function main() {
   if (cliIndex === null) {
     write("\n");
     await generateDefaultDockerfiles(packagesWithoutDockerfile);
-    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     write("\n");
     return;
   }
@@ -579,7 +580,7 @@ async function main() {
   if (!chosenCli) {
     write("\n");
     await generateDefaultDockerfiles(packagesWithoutDockerfile);
-    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     write("\n");
     return;
   }
@@ -615,7 +616,7 @@ async function main() {
     }
   }
 
-  execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore" });
+  execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
 
   // final verification
   write("\n");

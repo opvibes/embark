@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { readEmbarkConfig, shouldGenerateWorkflow } from "./embark-config";
 import type { AppDeployment } from "./embark-config";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -163,7 +164,7 @@ async function generateWorkflows() {
   const hasChanges = await processPackagesWorkflows(packages, WORKFLOWS_DIR);
 
   if (hasChanges) {
-    execSync("git add .github/workflows/", { cwd: ROOT, stdio: "inherit" });
+    execSync("git add .github/workflows/", { cwd: ROOT, stdio: "inherit", env: gitEnv() });
   } else {
     console.log("[generate-workflows] all workflows already exist, none created");
   }
