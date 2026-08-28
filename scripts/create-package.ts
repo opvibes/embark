@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 import type { AppDeployment, DeployConfig, EmbarkConfig } from "./embark-config";
 import { findRootDomainPackage, readEmbarkConfig } from "./embark-config";
+import { gitEnv } from "./git-env";
 import {
   COLOR,
   askRequiredField,
@@ -116,8 +117,9 @@ export function describeSubmoduleFailure(url: string, command: string, rawMessag
 export async function addGitSubmodule(url: string, relativePath: string, cwd: string): Promise<void> {
   const command = buildSubmoduleAddCommand(url, relativePath);
   // env is passed explicitly (not inherited implicitly) so a caller that sets
-  // GIT_ALLOW_PROTOCOL/GIT_CONFIG_* at runtime (e.g. tests using local repos) is honored.
-  const env = process.env;
+  // GIT_ALLOW_PROTOCOL/GIT_CONFIG_* at runtime (e.g. tests using local repos) is honored —
+  // but stripped of git-location vars (GIT_DIR etc.) so `cwd` is actually respected.
+  const env = gitEnv();
   try {
     execSync(command, { cwd, stdio: "pipe", env });
   } catch (error) {
@@ -217,7 +219,7 @@ export async function createPackageFiles(
   await writeEmbarkConfig(packageDir, embarkConfig);
 
   try {
-    execSync(`git add packages/${input.camelCaseName}/`, { cwd: repoRoot, stdio: "ignore" });
+    execSync(`git add packages/${input.camelCaseName}/`, { cwd: repoRoot, stdio: "ignore", env: gitEnv() });
   } catch {
     warnLine("Could not add to git automatically");
   }

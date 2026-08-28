@@ -1,6 +1,7 @@
 import { execSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { rm, access } from "node:fs/promises";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const DEMO_PACKAGE_DIR = join(ROOT, "packages", "embark");
@@ -28,7 +29,7 @@ export async function fileExists(path: string): Promise<boolean> {
 
 export function getUpstreamUrl(root: string): string | null {
   try {
-    return execSync("git remote get-url upstream", { cwd: root, stdio: "pipe" })
+    return execSync("git remote get-url upstream", { cwd: root, stdio: "pipe", env: gitEnv() })
       .toString()
       .trim();
   } catch {
@@ -38,7 +39,7 @@ export function getUpstreamUrl(root: string): string | null {
 
 export function getCommitsBehind(root: string, ref: string = "upstream/main"): number {
   try {
-    const count = execSync(`git rev-list HEAD..${ref} --count`, { cwd: root, stdio: "pipe" })
+    const count = execSync(`git rev-list HEAD..${ref} --count`, { cwd: root, stdio: "pipe", env: gitEnv() })
       .toString()
       .trim();
     return parseInt(count, 10) || 0;
@@ -49,7 +50,7 @@ export function getCommitsBehind(root: string, ref: string = "upstream/main"): n
 
 export function hasMergeConflicts(root: string): boolean {
   try {
-    const status = execSync("git status --porcelain", { cwd: root, stdio: "pipe" }).toString();
+    const status = execSync("git status --porcelain", { cwd: root, stdio: "pipe", env: gitEnv() }).toString();
     return /^(UU|AA|DD|AU|UA|DU|UD)/m.test(status);
   } catch {
     return false;
@@ -63,7 +64,7 @@ export async function removeDemoArtifacts(root: string): Promise<string[]> {
   if (await fileExists(demoPackage)) {
     await rm(demoPackage, { recursive: true, force: true });
     try {
-      execSync("git rm -r --cached packages/embark 2>/dev/null || true", { cwd: root, stdio: "ignore" });
+      execSync("git rm -r --cached packages/embark 2>/dev/null || true", { cwd: root, stdio: "ignore", env: gitEnv() });
     } catch {
       // ignore
     }
@@ -74,7 +75,7 @@ export async function removeDemoArtifacts(root: string): Promise<string[]> {
   if (await fileExists(demoWorkflow)) {
     await rm(demoWorkflow, { force: true });
     try {
-      execSync("git rm --cached .github/workflows/embark.yml 2>/dev/null || true", { cwd: root, stdio: "ignore" });
+      execSync("git rm --cached .github/workflows/embark.yml 2>/dev/null || true", { cwd: root, stdio: "ignore", env: gitEnv() });
     } catch {
       // ignore
     }
@@ -104,7 +105,7 @@ export async function syncUpstream(root: string = ROOT): Promise<"up-to-date" | 
 
   // 2. Fetch upstream
   console.log(`\n${C.cyan}📡 Fetching upstream...${C.reset}`);
-  execSync("git fetch upstream", { cwd: root, stdio: "inherit" });
+  execSync("git fetch upstream", { cwd: root, stdio: "inherit", env: gitEnv() });
 
   // 3. Check if already up to date
   const behind = getCommitsBehind(root);
@@ -120,7 +121,7 @@ export async function syncUpstream(root: string = ROOT): Promise<"up-to-date" | 
   const mergeResult = spawnSync(
     "git",
     ["merge", "upstream/main", "--no-commit", "--no-ff"],
-    { cwd: root, stdio: "inherit" },
+    { cwd: root, stdio: "inherit", env: gitEnv() },
   );
 
   if (mergeResult.status !== 0 && hasMergeConflicts(root)) {
@@ -139,31 +140,31 @@ export async function syncUpstream(root: string = ROOT): Promise<"up-to-date" | 
 
   // 6. Normalize derived config files
   console.log(`\n${C.cyan}🔧 Normalizing config files...${C.reset}`);
-  execSync("bun run scripts/update-apps-jsonc.ts", { cwd: root, stdio: "inherit" });
-  execSync("bun run scripts/normalize-package-json.ts", { cwd: root, stdio: "inherit" });
-  execSync("bun run scripts/update-root-scripts.ts", { cwd: root, stdio: "inherit" });
-  execSync("bun run scripts/update-readme-packages.ts", { cwd: root, stdio: "inherit" });
+  execSync("bun run scripts/update-apps-jsonc.ts", { cwd: root, stdio: "inherit", env: gitEnv() });
+  execSync("bun run scripts/normalize-package-json.ts", { cwd: root, stdio: "inherit", env: gitEnv() });
+  execSync("bun run scripts/update-root-scripts.ts", { cwd: root, stdio: "inherit", env: gitEnv() });
+  execSync("bun run scripts/update-readme-packages.ts", { cwd: root, stdio: "inherit", env: gitEnv() });
 
   // 7. Stage all changes
-  execSync("git add -u", { cwd: root, stdio: "ignore" });
-  execSync("git add .github/workflows/ 2>/dev/null || true", { cwd: root, stdio: "ignore" });
-  execSync("git add packages/ 2>/dev/null || true", { cwd: root, stdio: "ignore" });
+  execSync("git add -u", { cwd: root, stdio: "ignore", env: gitEnv() });
+  execSync("git add .github/workflows/ 2>/dev/null || true", { cwd: root, stdio: "ignore", env: gitEnv() });
+  execSync("git add packages/ 2>/dev/null || true", { cwd: root, stdio: "ignore", env: gitEnv() });
 
   // 8. Check if there's anything to commit
-  const statusOutput = execSync("git status --porcelain", { cwd: root, stdio: "pipe" }).toString().trim();
+  const statusOutput = execSync("git status --porcelain", { cwd: root, stdio: "pipe", env: gitEnv() }).toString().trim();
   if (!statusOutput) {
     console.log(`\n${C.green}✨ Nothing to commit after sync.${C.reset}\n`);
     return "nothing-to-commit";
   }
 
   // 9. Commit (skip hooks since we already ran the normalization scripts)
-  const upstreamSha = execSync("git rev-parse --short upstream/main", { cwd: root, stdio: "pipe" })
+  const upstreamSha = execSync("git rev-parse --short upstream/main", { cwd: root, stdio: "pipe", env: gitEnv() })
     .toString()
     .trim();
 
   execSync(
     `git commit -m "${buildSyncCommitMessage(upstreamSha)}" --no-verify`,
-    { cwd: root, stdio: "inherit" },
+    { cwd: root, stdio: "inherit", env: gitEnv() },
   );
 
   console.log(`\n${C.green}✅ Upstream sync complete!${C.reset}\n`);

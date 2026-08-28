@@ -11,6 +11,7 @@ import {
   isGitHubUrl,
   type PackageCreationInput,
 } from "../create-package";
+import { gitEnv } from "../git-env";
 
 describe("package name validation", () => {
   function validateCamelCase(name: string): boolean {
@@ -103,7 +104,7 @@ describe("Git submodule wiring", () => {
   const originalAllowProtocol = process.env.GIT_ALLOW_PROTOCOL;
 
   function git(cwd: string, args: string): string {
-    return execSync(`git ${args}`, { cwd, encoding: "utf-8" });
+    return execSync(`git ${args}`, { cwd, encoding: "utf-8", env: gitEnv() });
   }
 
   async function initRepoWithCommit(dir: string): Promise<void> {

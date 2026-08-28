@@ -11,6 +11,7 @@ import {
   buildSyncCommitMessage,
   syncUpstream,
 } from "../sync-upstream";
+import { gitEnv } from "../git-env";
 
 const TEST_DIR = join(import.meta.dirname, "../..", ".test-sync-upstream");
 
@@ -18,9 +19,9 @@ async function setupTest() {
   await mkdir(TEST_DIR, { recursive: true });
   // Initialize a git repo so git doesn't traverse up to the parent repo
   // (which in forks may have an 'upstream' remote, breaking isolation)
-  execSync("git init", { cwd: TEST_DIR, stdio: "ignore" });
-  execSync("git config user.email test@test.com", { cwd: TEST_DIR, stdio: "ignore" });
-  execSync("git config user.name Test", { cwd: TEST_DIR, stdio: "ignore" });
+  execSync("git init", { cwd: TEST_DIR, stdio: "ignore", env: gitEnv() });
+  execSync("git config user.email test@test.com", { cwd: TEST_DIR, stdio: "ignore", env: gitEnv() });
+  execSync("git config user.name Test", { cwd: TEST_DIR, stdio: "ignore", env: gitEnv() });
 }
 
 async function teardownTest() {
@@ -103,13 +104,13 @@ describe("sync-upstream", () => {
       const upstreamDir = join(TEST_DIR, "upstream.git");
 
       // Create bare upstream repo
-      execSync(`git init --bare "${upstreamDir}"`, { stdio: "ignore" });
+      execSync(`git init --bare "${upstreamDir}"`, { stdio: "ignore", env: gitEnv() });
 
       // Clone into repo dir
-      execSync(`git clone "${upstreamDir}" "${repoDir}"`, { stdio: "ignore" });
+      execSync(`git clone "${upstreamDir}" "${repoDir}"`, { stdio: "ignore", env: gitEnv() });
 
       // Add upstream remote pointing to bare repo
-      execSync(`git remote add upstream "${upstreamDir}"`, { cwd: repoDir, stdio: "ignore" });
+      execSync(`git remote add upstream "${upstreamDir}"`, { cwd: repoDir, stdio: "ignore", env: gitEnv() });
 
       const result = await syncUpstream(repoDir);
       expect(result).toBe("up-to-date");
