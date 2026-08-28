@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Bun-1.3.9-000000?style=for-the-badge&logo=bun&logoColor=white" alt="Bun" />
   <img src="https://img.shields.io/badge/TypeScript-Strict-3178c6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/tests-151%20passing-brightgreen?style=for-the-badge" alt="Tests pass" />
-  <img src="https://img.shields.io/badge/coverage-77%25-yellow?style=for-the-badge" alt="Coverage" />
+  <img src="https://img.shields.io/badge/coverage-71.78%25%20(target%2077%25)-yellow?style=for-the-badge" alt="Coverage: 71.78% measured, 77% target" />
 </p>
 
 ## What is Embark?
@@ -352,7 +352,11 @@ bun run test
 bun test scripts/__tests__/create-package.test.ts
 ```
 
-Coverage threshold: **65%** (configured in `bunfig.toml` — orchestration scripts that call git/bun are integration-level and excluded from unit test coverage)
+Coverage floor is set in `bunfig.toml` (`coverageThreshold`) — that's the
+single source of truth, don't repeat the number here. See "Test coverage" in
+`CLAUDE.md` for what the number means: it's checked per file (not the
+aggregate), it's driven by the least-covered file, and it's separate from the
+77% aggregate target.
 
 ## Deploy
 
