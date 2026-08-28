@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile, access } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -111,7 +112,7 @@ async function updateReadme() {
 
   if (result.hasChanged) {
     await writeFile(README_PATH, result.newContent, "utf-8");
-    execSync("git add README.md", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add README.md", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     console.log("[update-readme] packages table updated in README.md");
   }
 }

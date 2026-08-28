@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { readEmbarkConfig, hasCompleteEmbarkConfig } from "./embark-config";
 import type { AppDeployment } from "../shared/types/deploy";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -76,7 +77,7 @@ export async function updateAppsJsonc(
   await writeFile(appsPath, newContent);
 
   try {
-    execSync("git add apps.jsonc", { cwd: root, stdio: "ignore" });
+    execSync("git add apps.jsonc", { cwd: root, stdio: "ignore", env: gitEnv() });
   } catch {
     // May fail in test environments without git
   }

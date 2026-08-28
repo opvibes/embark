@@ -16,6 +16,7 @@ import {
   tryInitTty,
   write,
 } from "./cli-ui";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -583,9 +584,9 @@ ${JSON.stringify(completeConfig, null, 2)}
 
   if (hasChanges) {
     try {
-      execSync("git add packages/*/.embark.jsonc", { cwd: ROOT, stdio: "ignore" });
-      execSync("git add packages/*/netlify.toml", { cwd: ROOT, stdio: "ignore" });
-      execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore" });
+      execSync("git add packages/*/.embark.jsonc", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
+      execSync("git add packages/*/netlify.toml", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
+      execSync("git add packages/*/Dockerfile", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
     } catch {
       // Some globs may not match, that's ok
     }

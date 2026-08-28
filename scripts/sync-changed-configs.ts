@@ -7,6 +7,7 @@ import {
   extractCustomBlocks,
   mergeCustomBlocksIntoTemplate,
 } from "./sync-workflows";
+import { gitEnv } from "./git-env";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -21,6 +22,7 @@ export function getChangedEmbarkConfigs(): string[] {
       cwd: ROOT,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "ignore"],
+      env: gitEnv(),
     });
 
     const packages: string[] = [];
@@ -96,7 +98,7 @@ async function main() {
   }
 
   if (synced > 0) {
-    execSync("git add .github/workflows/", { cwd: ROOT, stdio: "ignore" });
+    execSync("git add .github/workflows/", { cwd: ROOT, stdio: "ignore", env: gitEnv() });
   }
 }
 

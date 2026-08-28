@@ -4,6 +4,7 @@ import { join } from "node:path";
 import * as readline from "node:readline";
 import { readEmbarkConfig } from "./embark-config";
 import { buildWorkflowContent } from "./generate-workflows";
+import { gitEnv } from "./git-env";
 
 export const CUSTOM_BLOCK_START = "# EMBARK:CUSTOM";
 export const CUSTOM_BLOCK_END = "# END EMBARK:CUSTOM";
@@ -412,6 +413,7 @@ export async function syncWorkflows(
       cwd: ROOT,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "ignore"],
+      env: gitEnv(),
     });
     for (const line of staged.split("\n")) {
       const match = line.trim().match(/^\.github\/workflows\/(.+)\.yml$/);
@@ -536,7 +538,7 @@ export async function syncWorkflows(
   }
 
   if (updated > 0) {
-    execSync("git add .github/workflows/", { cwd: ROOT, stdio: "inherit" });
+    execSync("git add .github/workflows/", { cwd: ROOT, stdio: "inherit", env: gitEnv() });
   }
 
   return { updated, skipped };
